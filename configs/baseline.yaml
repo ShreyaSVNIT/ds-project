@@ -1,0 +1,49 @@
+# Baseline & Model Hyperparameter Configuration
+dataset:
+  path: "data/raw/heart_disease_health_indicators_BRFSS2015.csv"
+  target: "HeartDiseaseorAttack"
+  expected_rows: 253680
+  expected_features: 21
+  prevalence: 0.094186
+  sha256: "953fb23bb131736d7879539a071d3f6d1eaae8d4867ab05335d0ba89b94d5f99"
+
+splits:
+  seed: 42
+  train_size: 0.70
+  valid_size: 0.15
+  test_size: 0.15
+  stratified: true
+
+threshold_policy:
+  policy: "validation_recall_constrained"
+  minimum_recall: 0.80
+  fallback_threshold: 0.50
+
+models:
+  logistic_regression:
+    solver: "lbfgs"
+    max_iter: 300
+    class_weight: "balanced"
+  random_forest:
+    n_estimators: 160
+    min_samples_leaf: 2
+    class_weight: "balanced_subsample"
+  extra_trees:
+    n_estimators: 160
+    min_samples_leaf: 2
+    class_weight: "balanced"
+  hist_gradient_boosting:
+    max_iter: 150
+    learning_rate: 0.08
+    max_leaf_nodes: 31
+    l2_regularization: 1.0
+  stacked_blender:
+    cv: 3
+    final_estimator: "LogisticRegression(class_weight='balanced')"
+    fold_isolated_resampling: true
+  neural:
+    epochs: 10
+    batch_size: 1024
+    learning_rate: 0.001
+    weight_decay: 0.00001
+    hidden_dim: 16
