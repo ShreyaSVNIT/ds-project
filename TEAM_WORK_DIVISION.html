@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cardiovascular Research - Team Work Division & Professor Questions</title>
+<style>
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+    color: #1f2328;
+    max-width: 960px;
+    margin: 40px auto;
+    padding: 0 24px;
+    background: #ffffff;
+  }
+  h1, h2, h3, h4 { color: #0969da; margin-top: 1.6em; }
+  h1 { border-bottom: 2px solid #d0d7de; padding-bottom: 0.3em; font-size: 2em; }
+  h2 { border-bottom: 1px solid #d0d7de; padding-bottom: 0.3em; font-size: 1.5em; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 20px 0;
+    font-size: 0.92em;
+  }
+  th, td {
+    border: 1px solid #d0d7de;
+    padding: 10px 12px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th { background-color: #f6f8fa; font-weight: 600; }
+  tr:nth-child(even) { background-color: #fcfcfc; }
+  code {
+    background-color: #eff1f3;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-family: ui-monospace, SFMono-Regular, SF Mono, Menlo, Consolas, Liberation Mono, monospace;
+    font-size: 0.88em;
+  }
+  pre {
+    background-color: #f6f8fa;
+    padding: 16px;
+    border-radius: 6px;
+    overflow-x: auto;
+    border: 1px solid #d0d7de;
+  }
+  blockquote {
+    border-left: 4px solid #0969da;
+    padding: 10px 16px;
+    color: #57606a;
+    background-color: #f6f8fa;
+    margin: 16px 0;
+    border-radius: 0 6px 6px 0;
+  }
+  hr { border: 0; border-top: 1px solid #d0d7de; margin: 30px 0; }
+  @media print {
+    body { max-width: 100%; margin: 15px; }
+    h1, h2, h3 { page-break-after: avoid; }
+    table { page-break-inside: avoid; }
+  }
+</style>
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({ startOnLoad: true });
+</script>
+</head>
+<body>
+<h1>Team Work Division — 4 Members (Equal Distribution)</h1>
+<h2>Cardiovascular Classification Research Project: EnsCVDD-Net Audit & FGGN Extension</h2>
+<hr>
+<h2>Part A — Questions to Ask Your Professor</h2>
+<table>
+<tr><th>#</th><th>Category</th><th>Question</th><th>Why It Matters / Strategic Context</th></tr>
+<tr><td>1</td><td><strong>Paper Audit</strong></td><td><strong>The original paper reports 96% precision + 87.8% recall at 9.42% prevalence, which mathematically requires ~98.5% accuracy — yet they report 91.7%. Should we frame this as an outright "mathematical inconsistency" or as evidence of an "undocumented artificially balanced evaluation set"?</strong></td><td>Dictates the academic tone of the critique. Demonstrates that your team performed rigorous data-math auditing rather than passive reading.</td></tr>
+<tr><td>2</td><td><strong>Reimplementation</strong></td><td><strong>Since the authors provided no source code, we built an architecture-faithful reimplementation from their exact diagrammed specifications. Is labeling this a "structural reimplementation" acceptable?</strong></td><td>Protects you from claims of claiming an exact reproduction while highlighting your engineering effort.</td></tr>
+<tr><td>3</td><td><strong>Dataset Cleaning</strong></td><td><strong>The Kaggle BRFSS subset contains 23,899 duplicate rows out of 253,680. We retained them to match the paper's sample size, but also audited deduplicated behavior. Should both results appear in the main text?</strong></td><td>Shows meticulous dataset handling.</td></tr>
+<tr><td>4</td><td><strong>Resampling</strong></td><td><strong>ADASYN creates synthetic non-binary values for discrete flags (e.g. <code>Smoker = 0.63</code>), hurting PR-AUC compared to class-weighted cross-entropy. Is presenting this as an empirical ablation sufficient?</strong></td><td>Justifies discarding artificial oversampling in favor of clinical class weighting.</td></tr>
+<tr><td>5</td><td><strong>Thresholds</strong></td><td><strong>We freeze a validation-selected threshold ($\text{Recall} \ge 80\%$) before evaluating test partitions. Should we present fixed 0.50, Youden's J, and cost-weighted clinical operating points side-by-side?</strong></td><td>Demonstrates operational understanding beyond default $0.50$ argmax cutoffs.</td></tr>
+<tr><td>6</td><td><strong>Statistics</strong></td><td><strong>We adopted the Nadeau–Bengio (2003) corrected resampled $t$-test to handle overlapping training folds across 5 seeds. Would you also like to see non-parametric bootstrap CIs?</strong></td><td>Signals high methodological maturity regarding repeated-holdout variance.</td></tr>
+<tr><td>7</td><td><strong>Framing Nulls</strong></td><td><strong>Our primary architectural result is an honest neutral/negative finding: learned softmax gating performs identically to uniform group pooling ($p = 0.448$), while domain grouping itself beats 1D convolutions ($p = 0.001$). Do you agree with centering the contribution on "domain grouping vs sequential inductive bias" rather than over-hyping gating?</strong></td><td><strong>Crucial alignment question.</strong> Professors value rigorous neutral findings over fabricated breakthroughs.</td></tr>
+<tr><td>8</td><td><strong>Submission Spec</strong></td><td><strong>What is the exact target format, page limit, and template (e.g., IEEE Access 2-column, NeurIPS/ICML style, or course template)? Should the full ablation matrix be an appendix?</strong></td><td>Required immediately so all 4 members write directly into the correct template.</td></tr>
+<tr><td>9</td><td><strong>Deliverables</strong></td><td><strong>Do you expect a one-command reproducible container/script (<code>make reproduce</code>), saved raw prediction arrays, or just the repository code and paper?</strong></td><td>Sets the scope for test suite and packaging deliverables.</td></tr>
+<tr><td>10</td><td><strong>Tree vs DL</strong></td><td><strong>Our finding that HistGradientBoosting outperforms all neural models aligns directly with Grinsztajn et al. (NeurIPS 2022). Is contextualizing our work as confirming this benchmark in clinical screening acceptable?</strong></td><td>Validates that a tree baseline winning is scientifically sound and expected.</td></tr>
+</table>
+<hr>
+<h2>Part B — Work Distribution Across 4 Team Members</h2>
+<p>Each team member owns an <strong>end-to-end vertical pillar</strong>:</p>
+<p>1. <strong>Technical & Experimental Domain</strong> (Code, models, analysis, or figures)</p>
+<p>2. <strong>Paper Writing</strong> (2–3 dedicated paper sections matching their domain)</p>
+<p>3. <strong>Slide Deck Preparation & Presentation</strong> (3–4 dedicated presentation slides)</p>
+<p>4. <strong>FGGN Cementation Improvement</strong> (A specific enhancement to elevate the project)</p>
+<pre class="mermaid">
+flowchart TD
+    subgraph "P1: Data, Audit & Literature"
+        T1["Audit, Prevalence Proof & ADASYN ablation"]
+        W1["Paper: §1 Intro, §2 Data, §3 Lit, §4 Audit"]
+        S1["Slides: Problem, Audit Proof, Lit Matrix"]
+    end
+
+    subgraph "P2: Neural Models & Extensions"
+        T2["FGGN, Instance Gating & Hybrid Ensemble"]
+        W2["Paper: §5 Models/Grouping, §6 Benchmarks"]
+        S2["Slides: Architectures, Results, Ablations"]
+    end
+
+    subgraph "P3: Visualization & Interpretability"
+        T3["DCA Curves, SHAP & Agreement Matrix"]
+        W3["Paper: §11 Attribution & New DCA Section"]
+        S3["Slides: Architecture Diagram, SHAP, DCA"]
+    end
+
+    subgraph "P4: Calibration, Fairness & Rigor"
+        T4["Platt/Isotonic, Subgroups & Nadeau-Bengio"]
+        W4["Paper: Abstract, §7 Stats, §8 Calib, §10 Fair, §12"]
+        S4["Slides: Reliability, Subgroups, Limitations"]
+    end
+
+    T1 --> W1 --> S1
+    T2 --> W2 --> S2
+    T3 --> W3 --> S3
+    T4 --> W4 --> S4
+</pre>
+<hr>
+<h3>👤 Person 1 — Data Integrity, Methodological Audit & Literature Lead</h3>
+<h4>1. Paper Sections to Write (~3.5–4 pages)</h4>
+<p>- <strong>Section 1: Introduction & Clinical Screening Context</strong></p>
+<p>  - CVD population surveillance, BRFSS survey characteristics, motivation for tabular screening models.</p>
+<p>  - Explicit articulation of RQ1 (Reproducibility), RQ2 (Inductive bias), RQ3 (Gating value), and RQ4 (Calibration/Fairness).</p>
+<p>- <strong>Section 2: Dataset Contract & Data Integrity Audit</strong></p>
+<p>  - Formal schema definition (22 columns, 253,680 rows, binary target <code>HeartDiseaseorAttack</code>).</p>
+<p>  - Cryptographic SHA-256 fingerprinting, verification of zero missing values, audit of 23,899 duplicate records.</p>
+<p>  - Stratified 70/15/15 partitioning protocol ensuring untouched test class prevalence (9.42%).</p>
+<p>- <strong>Section 3: Related Work & Novelty Assessment</strong></p>
+<p>  - Literature positioning across the 6 pillars from <code>research/related_work_matrix.md</code> (Grinsztajn et al. 2022, TabNet, Van Calster et al. 2016, Nadeau & Bengio 2003, Obermeyer et al. 2019).</p>
+<p>  - Explicit non-claims: acknowledging that feature grouping and softmax gating are established concepts.</p>
+<p>- <strong>Section 4: Methodological Audit of Published Work</strong></p>
+<p>  - <strong>The Prevalence Consistency Proof</strong>: Mathematical proof that 96.0% precision and 87.8% recall under 9.42% prevalence requires 98.51% accuracy (contradicting the reported 91.7%).</p>
+<p>  - Inductive bias breakdown: why 1D convolutions and recurrent GRU steps on arbitrary tabular feature orders are structurally flawed.</p>
+<p>  - ADASYN critique: how synthetic interpolation corrupts discrete survey features (<code>Sex = 0.42</code>).</p>
+<h4>2. Presentation Slides to Build (Slides 1 to 4)</h4>
+<p>- <strong>Slide 1: Title & Executive Summary</strong> — Motivation, research questions, and high-level findings.</p>
+<p>- <strong>Slide 2: Clinical Screening & Dataset Reality</strong> — CDC BRFSS 2015 properties, 9.42% class imbalance, trivial baseline (90.58% accuracy with 0 recall).</p>
+<p>- <strong>Slide 3: Literature Landscape & Inductive Bias</strong> — Why trees rule tabular data; why 1D CNN/GRU sequential assumptions fail on static surveys.</p>
+<p>- <strong>Slide 4: The Methodological Audit</strong> — Visual proof of mathematical metric inconsistency in Khan et al. (2024); empirical evidence of ADASYN data corruption.</p>
+<h4>3. Technical Tasks & Cementation Improvements</h4>
+<p>- <strong>Tabular ADASYN & Random Oversampling Benchmark</strong>: Execute <code>scripts/run_tabular_experiments.py</code> with <code>--resampling adasyn</code> and <code>--resampling random</code> to produce a direct side-by-side table of Class-Weighting vs ADASYN vs ROS on tree/linear models.</p>
+<p>- <strong>Deduplication Sensitivity Audit</strong>: Re-run the baseline models on a deduplicated dataset (229,781 unique rows) to quantify whether duplicate survey entries meaningfully change ranking or calibration.</p>
+<hr>
+<h3>👤 Person 2 — Core Models, FGGN Architecture & Experimental Lead</h3>
+<h4>1. Paper Sections to Write (~3.5–4 pages)</h4>
+<p>- <strong>Section 5: Domain-Grouped Neural Architectures & Baseline Ensembles</strong></p>
+<p>  - Clinical justification for partitioning 21 predictors into 4 domain representations (*Clinical History*, *Lifestyle*, *Self-Reported Health*, *Demographics/Access*).</p>
+<p>  - Mathematical formalization of <code>FeatureGroupGatedNet (FGGN)</code>: sub-network encoders, concatenated embedding fusion, learned softmax gate vector $\mathbf{w} = \text{softmax}(W_g \mathbf{z} + b_g)$.</p>
+<p>  - Formulation of <code>UniformGroupNet</code> ablation (uniform $1/4$ pooling) and <code>EnsCVDD-Net</code> reimplementation.</p>
+<p>  - Leakage-safe threshold selection policy ($\tau^*$ tuned exclusively on validation data to guarantee $\text{Recall} \ge 80\%$).</p>
+<p>- <strong>Section 6: Experimental Protocol & Multi-Seed Benchmark</strong></p>
+<p>  - Description of the 5-seed protocol (Seed 42 exploratory; Seeds 101, 2024, 777, 9999 confirmatory).</p>
+<p>  - Multi-seed benchmark table (Mean $\pm$ Std across PR-AUC, ROC-AUC, Precision, Recall, Specificity, Brier score).</p>
+<p>  - Detailed ablation findings (gating mechanism, number of PBCC features, resampling strategies).</p>
+<p>  - Technical description of new architectural enhancements (Instance Gating & Ensemble).</p>
+<h4>2. Presentation Slides to Build (Slides 5 to 8)</h4>
+<p>- <strong>Slide 5: Proposed Architectural Paradigm: FGGN</strong> — Block diagram contrasting sequential EnsCVDD-Net against domain-grouped FGGN.</p>
+<p>- <strong>Slide 6: 5-Seed Definitive Benchmark</strong> — Presentation of multi-seed results; ranking of HistGBT vs FGGN vs UniformGroupNet vs EnsCVDD.</p>
+<p>- <strong>Slide 7: Key Neutral Finding: Gating vs Uniform Pooling</strong> — Demonstrating that learned gating adds no ranking benefit over simple average pooling.</p>
+<p>- <strong>Slide 8: Novel Extensions: Instance-Dependent Gating & Hybrids</strong> — Results from the per-sample gating extension and the Tree+Neural ensemble.</p>
+<h4>3. Technical Tasks & Cementation Improvements</h4>
+<p>- <strong>Per-Sample (Instance-Dependent) Gating</strong>: Implement <code>InstanceGatedNet</code> where the gate network dynamically predicts patient-specific weights based on individual embedding vectors (testing whether local gating succeeds where global gating was flat).</p>
+<p>- <strong>FGGN + HistGradientBoosting Hybrid Ensemble</strong>: Construct an out-of-fold probability blend combining calibrated predictions of HistGBT and FGGN to prove that neural domain representations capture residual variance distinct from tree splits.</p>
+<p>- <strong>Reproducibility Automation</strong>: Write a clean root-level <code>Makefile</code> with targets (<code>make audit</code>, <code>make benchmark</code>, <code>make calibrate</code>, <code>make report</code>) and verify an end-to-end clean environment build.</p>
+<hr>
+<h3>👤 Person 3 — Visualization, Explainability & Clinical Decision Lead</h3>
+<h4>1. Paper Sections to Write (~3–3.5 pages)</h4>
+<p>- <strong>Section 11: Model Explainability & Feature Attribution</strong></p>
+<p>  - Global gate weight analysis: Clinical History (31.8%), Self-Reported Health (30.3%), Lifestyle (25.8%), Demographics (12.1%).</p>
+<p>  - Tree-based SHAP analysis (beeswarm summary and feature dependence plots for <code>GenHlth</code>, <code>Age</code>, <code>HighBP</code>, <code>DiffWalk</code>, <code>BMI</code>).</p>
+<p>  - Feature Importance Agreement Analysis: Spearman rank correlation comparing SHAP, PBCC univariate correlation, and neural gate loadings.</p>
+<p>  - Strict non-causal disclaimer: attributions reflect correlational predictive patterns in cross-sectional survey data, not causal etiology.</p>
+<p>- <strong>New Section / Subsection: Clinical Decision Curve Analysis (DCA)</strong></p>
+<p>  - Decision-theoretic evaluation across clinical threshold probabilities ($p_t \in [0.01, 0.50]$).</p>
+<p>  - Net benefit formulation: $\text{NB} = \frac{\text{TP}}{N} - \frac{\text{FP}}{N}\left(\frac{p_t}{1 - p_t}\right)$.</p>
+<p>  - Clinical comparison of all 5 models against default clinical policies ("Screen All" vs "Screen None").</p>
+<p>- <strong>Visual Lead across the Paper</strong>: Lead formatting of all figures, layout alignment, typography, and caption consistency.</p>
+<h4>2. Presentation Slides to Build (Slides 9 to 12)</h4>
+<p>- <strong>Slide 9: FGGN Architectural Mechanics</strong> — High-resolution, professional vector diagram illustrating data flow through group encoders and softmax fusion.</p>
+<p>- <strong>Slide 10: Model Explainability: What Drives Risk?</strong> — Dual visual showing FGGN gate distributions alongside Tree SHAP beeswarm distributions.</p>
+<p>- <strong>Slide 11: Cross-Method Feature Importance Agreement</strong> — Matrix comparing PBCC, SHAP, and gate importance rankings, highlighting concordant clinical risk drivers.</p>
+<p>- <strong>Slide 12: Clinical Decision Curve Analysis (DCA)</strong> — Net Benefit curves demonstrating the range of decision thresholds where FGGN and HistGBT yield positive clinical utility.</p>
+<h4>3. Technical Tasks & Cementation Improvements</h4>
+<p>- <strong>Implement Decision Curve Analysis (<code>scripts/decision_curve_analysis.py</code>)</strong>: Generate publication curves plotting net benefit against risk threshold probability ($1\%$ to $30\%$) for all models.</p>
+<p>- <strong>Comprehensive SHAP & Agreement Suite</strong>: Generate high-DPI beeswarm plots, individual dependence plots (showing non-linear BMI/Age inflection points), and compute the Spearman rank-correlation matrix across importance methods.</p>
+<p>- <strong>Master Figure Generation</strong>: Upgrade all figures in <code>artifacts/figures/</code> to 300+ DPI, consistent color palettes, standardized font sizes, and annotated statistical significance brackets.</p>
+<hr>
+<h3>👤 Person 4 — Statistical Inference, Calibration, Fairness & Synthesis Lead</h3>
+<h4>1. Paper Sections to Write (~3.5–4 pages)</h4>
+<p>- <strong>Abstract & Paper Integration</strong> (Lead co-author for overall manuscript cohesion and polish).</p>
+<p>- <strong>Section 7: Statistical Evaluation & Resampled Inference</strong></p>
+<p>  - The repeated holdout problem: addressing underestimation of variance in overlapping training folds (Dietterich 1998, Nadeau & Bengio 2003).</p>
+<p>  - Formal formulation of the Nadeau–Bengio variance correction: $\hat{\sigma}^2_{\text{corr}} = (1/K + n_{\text{test}}/n_{\text{train}})\hat{S}^2$.</p>
+<p>  - Analysis of paired differences: proving FGGN vs UniformGroupNet is neutral ($p = 0.448$), while domain grouping significantly beats EnsCVDD-Net ($p = 0.0011$).</p>
+<p>- <strong>Section 8: Probability Calibration under the Van Calster Hierarchy</strong></p>
+<p>  - Clinical risks of class-weighted logit shifts (uncalibrated Brier score 0.1654 vs baseline 0.0853).</p>
+<p>  - Validation-only post-hoc calibration: Platt scaling and Isotonic regression restoring moderate calibration (Brier 0.0703, calibration slope $\approx 0.96$, intercept $\approx -0.05$).</p>
+<p>- <strong>Section 10: Demographic Subgroup Dynamics & Prevalence Sensitivity</strong></p>
+<p>  - Performance evaluation across demographic strata (Age: 18–44, 45–64, 65+; Sex: Female, Male; Income tiers).</p>
+<p>  - Mathematical demonstration that precision disparities (17.7% in young adults to 25.7% in older adults) are driven by baseline prevalence shifts.</p>
+<p>  - Fairness caveat: clarifying that sub-slice analysis illustrates screening dynamics rather than proof of algorithmic equity.</p>
+<p>- <strong>Section 12: Threats to Validity, Limitations & Conclusion</strong></p>
+<p>  - Limitations of self-reported survey data, recall bias, cross-sectional vs longitudinal risk, and final synthesis.</p>
+<h4>2. Presentation Slides to Build (Slides 13 to 16)</h4>
+<p>- <strong>Slide 13: Statistical Inference & Overlap Corrections</strong> — Explaining repeated-holdout bias and presenting Nadeau-Bengio corrected confidence intervals.</p>
+<p>- <strong>Slide 14: Probability Calibration & Reliability</strong> — Van Calster hierarchy, uncalibrated distortion from class-weighting, and post-hoc isotonic restoration.</p>
+<p>- <strong>Slide 15: Subgroup Dynamics & Screening Disparities</strong> — How age/sex base prevalence shifts drive observed screening precision; ethical/fairness caveats.</p>
+<p>- <strong>Slide 16: Summary, Limitations & Future Directions</strong> — Key takeaways, why negative findings matter, and roadmap for longitudinal validation.</p>
+<h4>3. Technical Tasks & Cementation Improvements</h4>
+<p>- <strong>Bootstrap & Non-Parametric Statistics</strong>: Implement non-parametric bootstrap confidence intervals (1,000 resamples) and Wilcoxon signed-rank tests across the 951,300 persisted test predictions to corroborate the parametric Nadeau-Bengio tests.</p>
+<p>- <strong>Equalized Odds & Subgroup Calibration</strong>: Evaluate whether post-hoc calibration holds equally across demographic subgroups (evaluating if calibration slope/intercept degrades for low-prevalence young cohorts).</p>
+<p>- <strong>Comprehensive Verification & QA</strong>: Execute <code>pytest -v</code>, run zero-discrepancy metric cross-verification, and conduct the final editorial pass across all paper sections to ensure complete narrative alignment and adherence to non-causal language guidelines.</p>
+<hr>
+<h2>Part C — Synchronized 2-Week Milestone Roadmap</h2>
+<pre class="mermaid">
+gantt
+    title 2-Week Project Timeline & Handoffs
+    dateFormat  YYYY-MM-DD
+    section Person 1
+    Data Audit & ADASYN Runs       :2026-11-01, 3d
+    Write Paper §1 - §4            :2026-11-04, 4d
+    Build Slides 1 - 4             :2026-11-08, 3d
+    Dedup Sensitivity Check        :2026-11-11, 2d
+
+    section Person 2
+    Instance Gating & Ensemble     :2026-11-01, 4d
+    Write Paper §5 - §6            :2026-11-05, 4d
+    Build Slides 5 - 8             :2026-11-09, 3d
+    Makefile & Code Packaging      :2026-11-12, 2d
+
+    section Person 3
+    DCA Curves & SHAP Suite        :2026-11-01, 4d
+    Write Paper §11 & DCA Section  :2026-11-05, 3d
+    Build Slides 9 - 12            :2026-11-08, 3d
+    Master Figures Polish (300 DPI):2026-11-11, 3d
+
+    section Person 4
+    Bootstrap & Subgroup Calib     :2026-11-01, 4d
+    Write Paper §7, §8, §10, §12   :2026-11-05, 4d
+    Build Slides 13 - 16           :2026-11-09, 3d
+    Assembly, Proofing & QA        :2026-11-12, 2d
+</pre>
+<hr>
+<h2>Part D — Summary of Deliverable Ownership</h2>
+<table>
+<tr><th>Person</th><th>Focus Area</th><th>Paper Sections</th><th>Slide Deck</th><th>Key Extension / Cementation</th></tr>
+<tr><th><strong>Person 1</strong></th><th>Data, Audit & Literature</th><th><strong>§1, §2, §3, §4</strong></th><th><strong>Slides 1–4</strong></th><th>Tabular ADASYN benchmark + Deduplication sensitivity audit</th></tr>
+<tr><th><strong>Person 2</strong></th><th>Models & Core Engineering</th><th><strong>§5, §6</strong></th><th><strong>Slides 5–8</strong></th><th>Instance-dependent gating + HistGBT/FGGN probability ensemble</th></tr>
+<tr><th><strong>Person 3</strong></th><th>Interpretability & Visualization</th><th><strong>§11 + DCA Section</strong></th><th><strong>Slides 9–12</strong></th><th>Clinical Decision Curve Analysis (DCA) + Feature agreement matrix</th></tr>
+<tr><th><strong>Person 4</strong></th><th>Statistics, Fairness & Calibration</th><th><strong>Abstract, §7, §8, §10, §12</strong></th><th><strong>Slides 13–16</strong></th><th>Bootstrap CIs + Subgroup-specific calibration & final QA pass</th></tr>
+</table>
+</body>
+</html>
