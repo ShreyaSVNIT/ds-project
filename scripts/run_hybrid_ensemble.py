@@ -52,7 +52,11 @@ def main():
     # 2. Load trained FGGN from robustness
     fggn_path = ROOT / f"artifacts/robustness/models/feature_group_gated_seed_{args.seed}.pt"
     fggn_model = FeatureGroupGatedNet(features)
-    fggn_model.load_state_dict(torch.load(fggn_path, map_location=device, weights_only=True))
+    checkpoint = torch.load(fggn_path, map_location=device, weights_only=True)
+    if "state_dict" in checkpoint:
+        fggn_model.load_state_dict(checkpoint["state_dict"])
+    else:
+        fggn_model.load_state_dict(checkpoint)
     fggn_model.eval()
 
     # Preprocessing for FGGN
