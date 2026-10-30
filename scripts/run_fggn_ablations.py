@@ -2,19 +2,20 @@
 """Comprehensive Controlled Ablation Study & Multi-Seed Benchmark.
 
 Compares across 5 fixed random seeds (42, 101, 2024, 777, 9999):
-1. EnsCVDD-Net (Paper hybrid baseline)
+1. EnsCVDD-Net (Paper 1D CNN + GRU baseline)
 2. FeatureGroupGatedNet (Existing FGGN baseline)
-3. UniformGroupNet (Equal group pooling baseline)
-4. Residual FGGN (Ablation 1)
-5. Feature-wise Attention FGGN (Ablation 2)
-6. Cross-Group Interaction FGGN (Ablation 3)
-7. Hierarchical Gating FGGN (Ablation 4)
-8. Categorical Embedding FGGN (Ablation 5)
-9. Final Combined FGGN++ (Flagship model)
-10. HistGradientBoosting (Tabular champion benchmark)
+3. UniformGroupNet (Equal group pooling ablation)
+4. Residual FGGN (Ablation 1: ResBlocks + LayerNorm + GELU)
+5. Feature-wise Attention FGGN (Ablation 2: Intra-Group Attention)
+6. Cross-Group Interaction FGGN (Ablation 3: Second-Order Pairwise Interactions)
+7. Hierarchical Gating FGGN (Ablation 4: Feature Gate + Calibrated Group Gate)
+8. Categorical Embedding FGGN (Ablation 5: Entity Embeddings for Ordinals)
+9. FGGN++ (Flagship unified architecture with Focal Loss)
+10. HistGradientBoosting (Baseline setting)
+11. HistGradientBoosting (Optuna-tuned setting)
 
 Guarantees:
-- Naturally-imbalanced held-out test partitions strictly preserved.
+- Naturally-imbalanced held-out test partitions strictly preserved (N=38,052 per seed).
 - Zero test data leakage: scalers, feature ranking, threshold selection strictly on train/val.
 - Computes PR-AUC, ROC-AUC, Brier score, ECE, Recall, Precision, Specificity, F1, Balanced Accuracy.
 - Records parameter count, training time, and inference throughput (samples/sec).
@@ -28,7 +29,7 @@ import math
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import joblib
 import numpy as np
@@ -51,6 +52,7 @@ from cardio.fggn_variants import (
     CrossGroupInteractionFGGN,
     FeatureAttentionFGGN,
     FGGNPlusPlus,
+    FocalLoss,
     HierarchicalGatingFGGN,
     ResidualFGGN,
 )
@@ -83,10 +85,11 @@ def train_neural_model(
     X_train: np.ndarray,
     y_train: np.ndarray,
     device: torch.device,
-    epochs: int = 5,
+    epochs: int = 4,
     batch_size: int = 1024,
     lr: float = 1e-3,
     weight_decay: float = 1e-5,
+    loss_fn: Optional[nn.Module] = None,
     pos_weight: float = 9.61,
 ) -> float:
     """Train PyTorch model for fixed epochs, return training duration in seconds."""
@@ -94,7 +97,11 @@ def train_neural_model(
     dataset = TensorDataset(torch.from_numpy(X_train), torch.from_numpy(y_train))
     loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=weight_decay)
-    criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([pos_weight], device=device))
+
+    if loss_fn is None:
+        criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([pos_weight], device=device))
+    else:
+        criterion = loss_fn.to(device)
 
     t0 = time.time()
     for _ in range(epochs):
@@ -127,50 +134,17 @@ def predict_neural_prob(
     return np.concatenate(probs_list), dur
 
 
-def get_model_factory(name: str, features: List[str], scaler_mean: List[float], scaler_scale: List[float]):
-    if name == "enscvdd_net":
-        return lambda: EnsCVDDNet(len(features))
-    elif name == "fggn_baseline":
-        return lambda: FeatureGroupGatedNet(features, hidden_dim=16)
-    elif name == "uniform_group_net":
-        return lambda: UniformGroupNet(features, hidden_dim=16)
-    elif name == "residual_fggn":
-        return lambda: ResidualFGGN(features, hidden_dim=32, dropout=0.1)
-    elif name == "feature_attention_fggn":
-        return lambda: FeatureAttentionFGGN(features, embed_dim=16, hidden_dim=32, dropout=0.1)
-    elif name == "cross_group_interaction_fggn":
-        return lambda: CrossGroupInteractionFGGN(features, hidden_dim=32, dropout=0.1)
-    elif name == "hierarchical_gating_fggn":
-        return lambda: HierarchicalGatingFGGN(features, hidden_dim=32, initial_temperature=1.0, dropout=0.1)
-    elif name == "categorical_embedding_fggn":
-        return lambda: CategoricalEmbeddingFGGN(
-            features, embed_dim=16, hidden_dim=32, dropout=0.1, scaler_mean=scaler_mean, scaler_scale=scaler_scale
-        )
-    elif name == "fggn_plus_plus":
-        return lambda: FGGNPlusPlus(
-            features,
-            embed_dim=16,
-            hidden_dim=64,
-            num_heads=2,
-            initial_temperature=1.0,
-            dropout=0.15,
-            scaler_mean=scaler_mean,
-            scaler_scale=scaler_scale,
-        )
-    else:
-        raise ValueError(f"Unknown model name: {name}")
-
-
 def parse_args():
     parser = argparse.ArgumentParser(description="Multi-Seed Controlled Ablation Benchmark.")
     parser.add_argument("--data", default="data/raw/heart_disease_health_indicators_BRFSS2015.csv")
     parser.add_argument("--out", default="artifacts/ablations")
     parser.add_argument("--seeds", nargs="+", type=int, default=[42, 101, 2024, 777, 9999])
-    parser.add_argument("--neural-epochs", type=int, default=5)
+    parser.add_argument("--neural-epochs", type=int, default=4)
     return parser.parse_args()
 
 
 def main():
+    sys.stdout.reconfigure(line_buffering=True)
     args = parse_args()
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -183,6 +157,7 @@ def main():
     print("======================================================================")
     print(f"Dataset: {args.data}")
     print(f"Random Seeds: {args.seeds}")
+    print(f"Epochs per neural model: {args.neural_epochs}")
     print(f"Output Directory: {out_dir.resolve()}\n")
 
     X, y = load_dataset(args.data)
@@ -198,6 +173,7 @@ def main():
         "categorical_embedding_fggn",
         "fggn_plus_plus",
         "hist_gradient_boosting",
+        "hist_gradient_boosting_tuned",
     ]
 
     all_results: List[Dict[str, Any]] = []
@@ -230,7 +206,7 @@ def main():
             np.random.seed(seed)
 
             if model_name == "hist_gradient_boosting":
-                # HistGradientBoosting benchmark
+                # HistGradientBoosting baseline (from literature & original experiments)
                 hgb = HistGradientBoostingClassifier(
                     learning_rate=0.08,
                     max_leaf_nodes=31,
@@ -243,17 +219,78 @@ def main():
                 hgb.fit(A_train, y_train, sample_weight=sw)
                 fit_sec = time.time() - t0
 
-                # Inference
                 t0_inf = time.time()
                 v_prob = hgb.predict_proba(A_valid)[:, 1]
                 t_prob = hgb.predict_proba(A_test)[:, 1]
                 inf_sec = time.time() - t0_inf
                 param_count = 0
                 joblib.dump(hgb, out_dir / "models" / f"hist_gradient_boosting_seed_{seed}.joblib")
+
+            elif model_name == "hist_gradient_boosting_tuned":
+                # Optuna-tuned HistGradientBoosting
+                hgb = HistGradientBoostingClassifier(
+                    learning_rate=0.134,
+                    max_leaf_nodes=44,
+                    min_samples_leaf=46,
+                    l2_regularization=0.0115,
+                    max_iter=197,
+                    random_state=seed,
+                )
+                sw = np.where(y_train == 1, pos_ratio, 1.0)
+                t0 = time.time()
+                hgb.fit(A_train, y_train, sample_weight=sw)
+                fit_sec = time.time() - t0
+
+                t0_inf = time.time()
+                v_prob = hgb.predict_proba(A_valid)[:, 1]
+                t_prob = hgb.predict_proba(A_test)[:, 1]
+                inf_sec = time.time() - t0_inf
+                param_count = 0
+                joblib.dump(hgb, out_dir / "models" / f"hist_gradient_boosting_tuned_seed_{seed}.joblib")
+
             else:
-                # Neural models
-                factory = get_model_factory(model_name, features, scaler_mean, scaler_scale)
-                net = factory()
+                # PyTorch Neural Models
+                loss_fn = None
+                lr = 1e-3
+                weight_decay = 1e-5
+                batch_size = 1024
+
+                if model_name == "enscvdd_net":
+                    net = EnsCVDDNet(len(features))
+                elif model_name == "fggn_baseline":
+                    net = FeatureGroupGatedNet(features, hidden_dim=16)
+                elif model_name == "uniform_group_net":
+                    net = UniformGroupNet(features, hidden_dim=16)
+                elif model_name == "residual_fggn":
+                    net = ResidualFGGN(features, hidden_dim=32, dropout=0.1)
+                elif model_name == "feature_attention_fggn":
+                    net = FeatureAttentionFGGN(features, embed_dim=16, hidden_dim=32, dropout=0.1)
+                elif model_name == "cross_group_interaction_fggn":
+                    net = CrossGroupInteractionFGGN(features, hidden_dim=32, dropout=0.1)
+                elif model_name == "hierarchical_gating_fggn":
+                    net = HierarchicalGatingFGGN(features, hidden_dim=32, initial_temperature=1.0, dropout=0.1)
+                elif model_name == "categorical_embedding_fggn":
+                    net = CategoricalEmbeddingFGGN(
+                        features, embed_dim=16, hidden_dim=32, dropout=0.1,
+                        scaler_mean=scaler_mean, scaler_scale=scaler_scale
+                    )
+                elif model_name == "fggn_plus_plus":
+                    net = FGGNPlusPlus(
+                        features,
+                        embed_dim=8,
+                        hidden_dim=32,
+                        num_heads=2,
+                        initial_temperature=1.0,
+                        dropout=0.10,
+                        scaler_mean=scaler_mean,
+                        scaler_scale=scaler_scale,
+                    )
+                    lr = 0.001
+                    weight_decay = 1e-5
+                    loss_fn = FocalLoss(alpha=0.50, gamma=1.63, pos_weight=pos_ratio)
+                else:
+                    raise ValueError(f"Unknown model name: {model_name}")
+
                 param_count = count_parameters(net)
                 fit_sec = train_neural_model(
                     net,
@@ -261,9 +298,10 @@ def main():
                     y_train,
                     device=device,
                     epochs=args.neural_epochs,
-                    batch_size=1024,
-                    lr=1e-3,
-                    weight_decay=1e-5,
+                    batch_size=batch_size,
+                    lr=lr,
+                    weight_decay=weight_decay,
+                    loss_fn=loss_fn,
                     pos_weight=pos_ratio,
                 )
                 v_prob, _ = predict_neural_prob(net, A_valid, device=device)
@@ -284,9 +322,9 @@ def main():
             ece_val = expected_calibration_error(y_test, t_prob, n_bins=10)
             throughput = len(y_test) / max(inf_sec, 1e-4)
 
-            # Evaluate under validation recall-constrained policy
+            # Metrics at validation recall >= 0.80 threshold
             m_recall = metric_dict(y_test, t_prob, thresh_recall)
-            # Evaluate under fixed 0.50 threshold policy
+            # Metrics at default 0.50 threshold
             m_05 = metric_dict(y_test, t_prob, 0.50)
 
             all_results.append({
@@ -370,13 +408,14 @@ def main():
         })
 
     summary_df = pd.DataFrame(summary_rows)
-    summary_df.sort_values(by="pr_auc_mean", ascending=False, inplace=True)
+    summary_df = summary_df.sort_values(by="pr_auc_mean", ascending=False)
     summary_df.to_csv(out_dir / "ablation_summary.csv", index=False)
 
     # ------------------------------------------------------------------
     # Statistical Significance Testing (Paired t-test & Wilcoxon)
     # ------------------------------------------------------------------
-    hgb_prs = recall_df[recall_df["model"] == "hist_gradient_boosting"].sort_values("seed")["pr_auc_average_precision"].values
+    hgb_base_prs = recall_df[recall_df["model"] == "hist_gradient_boosting"].sort_values("seed")["pr_auc_average_precision"].values
+    hgb_tune_prs = recall_df[recall_df["model"] == "hist_gradient_boosting_tuned"].sort_values("seed")["pr_auc_average_precision"].values
     fggn_base_prs = recall_df[recall_df["model"] == "fggn_baseline"].sort_values("seed")["pr_auc_average_precision"].values
     fggn_plus_prs = recall_df[recall_df["model"] == "fggn_plus_plus"].sort_values("seed")["pr_auc_average_precision"].values
 
@@ -384,9 +423,13 @@ def main():
     t_fggn_base, p_fggn_base = stats.ttest_rel(fggn_plus_prs, fggn_base_prs)
     w_fggn_base, p_w_fggn_base = stats.wilcoxon(fggn_plus_prs, fggn_base_prs)
 
-    # FGGN++ vs HistGradientBoosting
-    t_hgb, p_hgb = stats.ttest_rel(fggn_plus_prs, hgb_prs)
-    w_hgb, p_w_hgb = stats.wilcoxon(fggn_plus_prs, hgb_prs)
+    # FGGN++ vs HistGradientBoosting Baseline
+    t_hgb_base, p_hgb_base = stats.ttest_rel(fggn_plus_prs, hgb_base_prs)
+    w_hgb_base, p_w_hgb_base = stats.wilcoxon(fggn_plus_prs, hgb_base_prs)
+
+    # FGGN++ vs HistGradientBoosting Tuned
+    t_hgb_tune, p_hgb_tune = stats.ttest_rel(fggn_plus_prs, hgb_tune_prs)
+    w_hgb_tune, p_w_hgb_tune = stats.wilcoxon(fggn_plus_prs, hgb_tune_prs)
 
     stat_summary = {
         "fggn_plus_plus_vs_fggn_baseline": {
@@ -398,14 +441,23 @@ def main():
             "wilcoxon_stat": float(w_fggn_base),
             "wilcoxon_pvalue": float(p_w_fggn_base),
         },
-        "fggn_plus_plus_vs_hist_gradient_boosting": {
+        "fggn_plus_plus_vs_hist_gradient_boosting_baseline": {
             "fggn_plus_plus_pr_auc": f"{np.mean(fggn_plus_prs):.4f} +/- {np.std(fggn_plus_prs, ddof=1):.4f}",
-            "hist_gradient_boosting_pr_auc": f"{np.mean(hgb_prs):.4f} +/- {np.std(hgb_prs, ddof=1):.4f}",
-            "delta_pr_auc": float(np.mean(fggn_plus_prs) - np.mean(hgb_prs)),
-            "paired_t_stat": float(t_hgb),
-            "paired_t_pvalue": float(p_hgb),
-            "wilcoxon_stat": float(w_hgb),
-            "wilcoxon_pvalue": float(p_w_hgb),
+            "hist_gradient_boosting_pr_auc": f"{np.mean(hgb_base_prs):.4f} +/- {np.std(hgb_base_prs, ddof=1):.4f}",
+            "delta_pr_auc": float(np.mean(fggn_plus_prs) - np.mean(hgb_base_prs)),
+            "paired_t_stat": float(t_hgb_base),
+            "paired_t_pvalue": float(p_hgb_base),
+            "wilcoxon_stat": float(w_hgb_base),
+            "wilcoxon_pvalue": float(p_w_hgb_base),
+        },
+        "fggn_plus_plus_vs_hist_gradient_boosting_tuned": {
+            "fggn_plus_plus_pr_auc": f"{np.mean(fggn_plus_prs):.4f} +/- {np.std(fggn_plus_prs, ddof=1):.4f}",
+            "hist_gradient_boosting_tuned_pr_auc": f"{np.mean(hgb_tune_prs):.4f} +/- {np.std(hgb_tune_prs, ddof=1):.4f}",
+            "delta_pr_auc": float(np.mean(fggn_plus_prs) - np.mean(hgb_tune_prs)),
+            "paired_t_stat": float(t_hgb_tune),
+            "paired_t_pvalue": float(p_hgb_tune),
+            "wilcoxon_stat": float(w_hgb_tune),
+            "wilcoxon_pvalue": float(p_w_hgb_tune),
         },
     }
     with (out_dir / "statistical_tests.json").open("w", encoding="utf-8") as f:
@@ -435,8 +487,10 @@ def main():
     print("======================================================================")
     print(f"FGGN++ vs FGGN Baseline: Delta = {stat_summary['fggn_plus_plus_vs_fggn_baseline']['delta_pr_auc']:+.4f} "
           f"(t={t_fggn_base:.3f}, p={p_fggn_base:.4f})")
-    print(f"FGGN++ vs HistGBT Benchmark: Delta = {stat_summary['fggn_plus_plus_vs_hist_gradient_boosting']['delta_pr_auc']:+.4f} "
-          f"(t={t_hgb:.3f}, p={p_hgb:.4f})")
+    print(f"FGGN++ vs HistGBT Baseline: Delta = {stat_summary['fggn_plus_plus_vs_hist_gradient_boosting_baseline']['delta_pr_auc']:+.4f} "
+          f"(t={t_hgb_base:.3f}, p={p_hgb_base:.4f})")
+    print(f"FGGN++ vs HistGBT Tuned: Delta = {stat_summary['fggn_plus_plus_vs_hist_gradient_boosting_tuned']['delta_pr_auc']:+.4f} "
+          f"(t={t_hgb_tune:.3f}, p={p_hgb_tune:.4f})")
     print(f"\nAll artifacts successfully saved to {out_dir.resolve()}")
 
 
