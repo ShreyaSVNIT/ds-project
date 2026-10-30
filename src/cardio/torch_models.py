@@ -140,3 +140,53 @@ class UniformGroupNet(nn.Module):
         stacked = torch.stack(embeddings, dim=1)  # [batch, groups, hidden_dim]
         fused = torch.mean(stacked, dim=1)  # Uniform averaging across groups
         return self.classifier(fused).squeeze(-1)
+
+
+class InstanceGatedNet(nn.Module):
+    """Dynamic per-instance gated network.
+    Unlike global FGGN which applies a static linear gate projection to concatenated group embeddings,
+    InstanceGatedNet computes a per-patient routing vector conditioned directly on the patient's
+    specific physiological embeddings via an attentive gating MLP.
+    """
+    def __init__(self, feature_names: list[str], hidden_dim: int = 16):
+        super().__init__()
+        self.feature_names = list(feature_names)
+        name_to_idx = {name: i for i, name in enumerate(self.feature_names)}
+        self.group_names = []
+        self.group_indices = []
+        for group_name, names in FEATURE_GROUPS.items():
+            indices = [name_to_idx[name] for name in names if name in name_to_idx]
+            if indices:
+                self.group_names.append(group_name)
+                self.group_indices.append(indices)
+        if not self.group_indices:
+            raise ValueError("No recognized feature names were provided to InstanceGatedNet.")
+        self.encoders = nn.ModuleList([
+            nn.Sequential(nn.Linear(len(indices), hidden_dim), nn.ReLU(),
+                          nn.Linear(hidden_dim, hidden_dim), nn.ReLU())
+            for indices in self.group_indices
+        ])
+        # Two-layer attentive instance gate
+        total_dim = hidden_dim * len(self.group_indices)
+        self.instance_gate = nn.Sequential(
+            nn.Linear(total_dim, total_dim // 2),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(total_dim // 2, len(self.group_indices))
+        )
+        self.classifier = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim), nn.ReLU(), nn.Dropout(0.1), nn.Linear(hidden_dim, 1)
+        )
+
+    def forward_with_gates(self, x):
+        embeddings = [encoder(x[:, indices]) for encoder, indices in zip(self.encoders, self.group_indices)]
+        joint = torch.cat(embeddings, dim=1)
+        # Compute per-sample weights: shape [batch, num_groups]
+        weights = torch.softmax(self.instance_gate(joint), dim=1)
+        stacked = torch.stack(embeddings, dim=1)  # [batch, groups, hidden_dim]
+        fused = torch.sum(stacked * weights.unsqueeze(-1), dim=1)
+        return self.classifier(fused).squeeze(-1), weights
+
+    def forward(self, x):
+        logits, _ = self.forward_with_gates(x)
+        return logits
