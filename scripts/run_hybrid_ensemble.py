@@ -114,10 +114,9 @@ def main():
 
     summary = {
         "finding": (
-            "The 60/40 and 50/50 Isotonic-calibrated blend of HistGradientBoosting and FGGN achieves PR-AUC 0.3756, "
-            "surpassing both HistGradientBoosting alone (0.3732) and FGGN alone (0.3666). "
-            "This proves that tree-based gradient boosting and domain-grouped neural representations learn "
-            "complementary decision surfaces."
+            "This single-seed calibrated blend artifact is retained as exploratory. "
+            "Use the multi-seed blend_summary.json and multiseed_blend_summary.csv for the primary "
+            "fixed-weight blend results; this file is not a multi-seed estimate."
         )
     }
     with (OUT / "summary.json").open("w", encoding="utf-8") as f:

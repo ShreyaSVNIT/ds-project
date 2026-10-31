@@ -29,7 +29,7 @@ Email: \{\IEEEauthorrefmark{1}person1, \IEEEauthorrefmark{2}person2, \IEEEauthor
 \maketitle
 
 \begin{abstract}
-Deep architectures have recently been proposed for cardiovascular disease classification from the CDC Behavioral Risk Factor Surveillance System (BRFSS), but reported metrics can be difficult to interpret when resampling, prevalence, and threshold selection are incompletely specified. We perform a leakage-aware structural reimplementation and extension of EnsCVDD-Net on the 253,680-record BRFSS 2015 Heart Disease Health Indicators cohort. Raw rows are split before learned preprocessing; validation and test partitions retain natural prevalence; and all reported operating thresholds and calibrators are learned without access to test labels. The published combination of accuracy, precision, and recall is mathematically incompatible with the cohort prevalence: the reported precision and recall imply approximately 52.3\% positive prevalence and approximately 98.5\% accuracy under a simple confusion-matrix reconstruction, but this does not identify the original split or resampling procedure. Across five persisted repeated holdouts, Histogram Gradient Boosting has the highest mean PR-AUC ($0.3717\pm0.0067$) and ROC-AUC ($0.8483\pm0.0026$). Domain-grouped neural models exceed the sequential CNN--GRU reimplementation in PR-AUC, whereas learned group gating does not outperform uniform pooling. An 80/20 HistGradientBoosting--FGGN probability blend is numerically strongest ($0.3728\pm0.0064$ PR-AUC), but the improvement is small and not independently established as statistically significant. Validation-only isotonic calibration reduces the mean test Brier score from $0.1654$ to $0.0703$, below the constant-prevalence baseline of $0.0853$. Subgroup and decision-curve analyses show why natural prevalence and operating policy must accompany discrimination metrics. These findings support reproducible evaluation of self-reported heart-disease history classification; they do not establish prospective cardiovascular risk prediction or clinical readiness.
+Deep architectures have recently been proposed for cardiovascular disease classification from the CDC Behavioral Risk Factor Surveillance System (BRFSS), but reported metrics can be difficult to interpret when resampling, prevalence, and threshold selection are incompletely specified. We perform a leakage-aware structural reimplementation and extension of EnsCVDD-Net on the 253,680-record BRFSS 2015 Heart Disease Health Indicators cohort. Raw rows are split before learned preprocessing; validation and test partitions retain natural prevalence; and all reported operating thresholds and calibrators are learned without access to test labels. The published combination of accuracy, precision, and recall is mathematically incompatible with the cohort prevalence: the reported precision and recall imply approximately 52.3\% positive prevalence and approximately 98.5\% accuracy under a simple confusion-matrix reconstruction, but this does not identify the original split or resampling procedure. Across five persisted repeated holdouts, Histogram Gradient Boosting has the highest mean PR-AUC ($0.3717\pm0.0067$) and ROC-AUC ($0.8483\pm0.0026$). Domain-grouped neural models exceed the sequential CNN--GRU reimplementation in PR-AUC, whereas learned group gating does not outperform uniform pooling. An exploratory FGGN-family benchmark reaches a highest observed PR-AUC of $0.3733\pm0.0060$ for CrossGroupInteraction-FGGN, while FGGN++ reaches $0.3700\pm0.0049$ and does not significantly exceed baseline FGGN. A fixed-weight exploratory blend scan reaches $0.3730\pm0.0063$ at 70/30 HistGradientBoosting--FGGN weighting; because the weight was selected from test-set results, this is not treated as confirmatory. Validation-only isotonic calibration reduces the mean test Brier score from $0.1654$ to $0.0703$, below the constant-prevalence baseline of $0.0853$. Subgroup and decision-curve analyses show why natural prevalence and operating policy must accompany discrimination metrics. These findings support reproducible evaluation of self-reported heart-disease history classification; they do not establish prospective cardiovascular risk prediction or clinical readiness.
 \end{abstract}
 
 \begin{IEEEkeywords}
@@ -272,15 +272,35 @@ The stored resampling comparison supports the methodological warning about ADASY
 \subsection{Feature-Group Ablation and Gating}
 UniformGroupNet ($0.3693$ PR-AUC) and FGGN ($0.3689$) are nearly indistinguishable across seeds. The paired test does not support a gating improvement. The result indicates that the semantic grouping and separate encoders may account for most of the benefit relative to the sequential baseline, while the learned gate adds complexity without measurable ranking gain in this experiment.
 
-\begin{figure}[t]
+\subsection{Exploratory FGGN-Family Variant Benchmark}
+The repository also contains a broader five-seed architectural benchmark. It uses the same seeds, row-level stratified 70/15/15 splits, training-only PBCC selection and scaling, class-weighted neural training, validation-selected 80 percent recall thresholds, and untouched natural-prevalence test partitions as the primary study. It is nevertheless reported separately because it uses a four-epoch AdamW training budget rather than the primary five-epoch Adam runner and evaluates a larger set of candidate architectures. The broader search also creates a model-selection consideration: the largest observed PR-AUC should not be treated as an independently confirmed winner.
+
+\begin{table*}[t]
 \centering
-\includegraphics[width=\columnwidth]{fggn_gate_weights}
-\caption{FGGN group gate allocations. These are predictive model weights, not causal effects.}
-\label{fig:gates}
-\end{figure}
+\caption{Exploratory five-seed FGGN-family benchmark. Values are mean $\pm$ standard deviation on natural-prevalence test partitions.}
+\label{tab:fggn_variants}
+\scriptsize
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Variant} & \textbf{PR-AUC} & \textbf{ROC-AUC} & \textbf{Recall} & \textbf{Precision} & \textbf{Brier}\\
+\midrule
+CrossGroupInteraction-FGGN & \textbf{0.3733$\pm$0.0060} & \textbf{0.8488$\pm$0.0025} & 0.7960$\pm$0.0067 & 0.2469$\pm$0.0023 & 0.1651$\pm$0.0099\\
+CategoricalEmbedding-FGGN & 0.3723$\pm$0.0073 & 0.8484$\pm$0.0028 & 0.7965$\pm$0.0073 & 0.2471$\pm$0.0040 & 0.1683$\pm$0.0061\\
+Residual-FGGN & 0.3711$\pm$0.0053 & 0.8481$\pm$0.0026 & 0.7978$\pm$0.0083 & 0.2454$\pm$0.0029 & \textbf{0.1638$\pm$0.0031}\\
+Hierarchical-Gating-FGGN & 0.3702$\pm$0.0047 & 0.8483$\pm$0.0026 & 0.7960$\pm$0.0074 & 0.2465$\pm$0.0036 & 0.1640$\pm$0.0082\\
+FGGN++ & 0.3700$\pm$0.0049 & 0.8473$\pm$0.0025 & 0.7987$\pm$0.0078 & 0.2453$\pm$0.0043 & 0.1756$\pm$0.0078\\
+Feature-Attention-FGGN & 0.3696$\pm$0.0060 & 0.8477$\pm$0.0028 & 0.7992$\pm$0.0079 & 0.2469$\pm$0.0039 & 0.1650$\pm$0.0177\\
+UniformGroupNet & 0.3691$\pm$0.0071 & 0.8481$\pm$0.0027 & 0.7967$\pm$0.0081 & 0.2466$\pm$0.0044 & 0.1664$\pm$0.0040\\
+FGGN baseline & 0.3676$\pm$0.0062 & 0.8473$\pm$0.0022 & 0.7951$\pm$0.0063 & 0.2457$\pm$0.0050 & 0.1709$\pm$0.0096\\
+EnsCVDD-Net & 0.3522$\pm$0.0053 & 0.8430$\pm$0.0031 & 0.7961$\pm$0.0104 & 0.2397$\pm$0.0055 & 0.1736$\pm$0.0135\\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+CrossGroupInteraction-FGGN is the highest observed variant in this exploratory table, but its corrected comparison with the primary HistGradientBoosting baseline is not evidence of superiority: the stored paired tests for FGGN++ versus HistGradientBoosting give $p=0.448$ (Wilcoxon $p=0.625$), and FGGN++ versus baseline FGGN gives $p=0.346$ (Wilcoxon $p=0.438$). These tests do not cover every variant, so the table is descriptive and hypothesis-generating. FGGN++ also has the largest parameter count among the neural variants and a comparatively poor Brier score, illustrating why PR-AUC alone is insufficient.
 
 \subsection{Recall-Constrained Threshold Evaluation}
-The validation-selected threshold targets at least 80\% validation recall. On the untouched tests, mean recall ranges from $79.60\%$ to $79.82\%$ across the main models. This slight shortfall is expected under sampling variability and confirms why it is incorrect to describe the test result as a guaranteed 80\% constraint. The associated precision is approximately $24\%$--$25\%$ and specificity approximately $74\%$--$75\%. A full sensitivity curve at 70, 80, 85, 90, and 95\% recall requires a new threshold-grid export and is not inserted without evidence.
+The validation-selected threshold targets at least 80 percent validation recall. On the untouched tests, mean recall ranges from 79.60 percent to 79.82 percent across the main models. This slight shortfall is expected under sampling variability and confirms why it is incorrect to describe the test result as a guaranteed 80 percent constraint. The associated precision is approximately 24--25 percent and specificity approximately 74--75 percent. We additionally exported validation-selected thresholds for 70, 80, 85, 90, and 95 percent recall targets, then evaluated each frozen threshold on the untouched test partition.
 
 \begin{figure}[t]
 \centering
@@ -288,6 +308,31 @@ The validation-selected threshold targets at least 80\% validation recall. On th
 \caption{Persisted recall--precision operating-point analysis.}
 \label{fig:threshold}
 \end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{threshold_sensitivity}
+\caption{Test operating points after selecting thresholds on validation data for each recall target.}
+\label{fig:threshold_sensitivity}
+\end{figure}
+
+\begin{table}[t]
+\centering
+\caption{HistGradientBoosting threshold sensitivity across five seeds.}
+\label{tab:threshold_sensitivity}
+\scriptsize
+\begin{tabular}{ccccc}
+\toprule
+\textbf{Val. target} & \textbf{Val. recall} & \textbf{Test recall} & \textbf{Test precision} & \textbf{Test specificity}\\
+\midrule
+70\% & 70.07\% & 69.34\% & 28.44\% & 81.85\%\\
+80\% & 80.07\% & 79.66\% & 24.66\% & 74.69\%\\
+85\% & 85.05\% & 84.80\% & 22.53\% & 69.67\%\\
+90\% & 90.01\% & 89.82\% & 19.91\% & 62.41\%\\
+95\% & 95.01\% & 94.89\% & 16.60\% & 50.40\%\\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \subsection{Calibration Comparison}
 Class weighting preserves ranking but shifts the score distribution, producing an uncalibrated mean test Brier score of $0.1654$ for HistGradientBoosting, worse than the constant-prevalence baseline $0.0853$. Validation-only Platt scaling reduces it to $0.0706 and isotonic regression to $0.0703. The isotonic calibration slope and intercept are approximately $0.963$ and $-0.058$, respectively. These improvements are measured on untouched test predictions, but calibration under temporal or demographic distribution shift remains unknown.
@@ -300,7 +345,10 @@ Class weighting preserves ranking but shifts the score distribution, producing a
 \end{figure}
 
 \subsection{Hybrid Ensemble}
-An 80/20 probability blend of HistGradientBoosting and FGGN reaches PR-AUC $0.3728\pm0.0064$ and ROC-AUC $0.8489\pm0.0025$. The numerical gain suggests complementary errors, but the improvement is small. Because the blend weight and model selection are part of the experimental process, the result should be treated as an extension requiring further nested validation or external confirmation rather than as proof of superiority.
+The verified multi-seed blend file evaluates fixed weights from 0/100 through 100/0 on the persisted primary predictions. The highest observed mean is the 70/30 HistGradientBoosting--FGGN blend, with PR-AUC $0.3730\pm0.0063$ and ROC-AUC $0.8490\pm0.0025$; the 80/20 blend reaches $0.3728\pm0.0064$ and $0.8489\pm0.0025$. Since the weight was selected by inspecting the same test-set summary, these figures are exploratory, not a confirmatory ensemble claim. The former single-seed `summary.json` stated $0.3756$ and is inconsistent with the multi-seed CSV; it is now labeled as a single-seed exploratory artifact and is not used as evidence.
+
+\subsection{Duplicate-Group-Aware Evaluation}
+The primary row-level split can place identical predictor vectors in different partitions. To quantify this issue without changing the primary benchmark, we performed a separate five-seed evaluation in which exact predictor-vector groups were assigned wholly to one partition. The resulting test partitions contain $37{,}723$--$38{,}338$ rows and prevalence $9.31\%$--$9.66\%$ (mean $9.44\%$). No exact predictor group crosses train, validation, or test. Under this design, HistGradientBoosting obtains PR-AUC $0.3703\pm0.0050$, FGGN $0.3692\pm0.0037$, UniformGroupNet $0.3685\pm0.0042$, and EnsCVDD-Net $0.3587\pm0.0032$. The ranking is qualitatively unchanged, but the result is a sensitivity analysis because grouping identical predictors can also place respondents with different target labels together and changes partition sizes.
 
 \subsection{Subgroup Analysis}
 The subgroup artifacts evaluate age, sex, and income strata. Age prevalence is $1.38\%$ for young adults, $7.08\%$ for middle-aged adults, and $17.25\%$ for older adults; sex prevalence is $7.24\%$ for females and $12.18\%$ for males; income prevalence ranges from $5.97\%$ in the highest tier to $15.96\%$ in the lowest. Precision is consequently prevalence-sensitive: the same ranking and threshold can yield much lower positive predictive value in a low-prevalence group. These results are not a fairness certification, and the available analysis does not identify causal sources of subgroup differences.

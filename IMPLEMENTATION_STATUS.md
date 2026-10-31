@@ -55,5 +55,11 @@ Update this file after each milestone. Do not mark a task complete without a com
 - [x] Added 15 bibliography entries covering cardiovascular prediction, tabular neural architectures, oversampling, calibration, statistical testing, and reporting guidance.
 - [x] Added persisted reliability, subgroup, target-distribution, and SHAP figures to `report/latex/figures/`; retained the existing comparison, prevalence, resampling, gating, threshold, and decision-curve figures in the paper.
 - [x] Corrected the prevalence audit language to distinguish an arithmetic implication from proof of the original split or resampling procedure.
-- [ ] Full LaTeX compilation remains pending because no `pdflatex`, `bibtex`, `latexmk`, or `tectonic` executable is available in the current environment.
-- [ ] Duplicate-group-aware splitting and a 70/80/85/90/95 percent recall threshold grid require additional experiment exports and are not claimed in the paper.
+- [x] Full LaTeX compilation completed with Tectonic; warnings remain for underfull/overfull boxes and the legacy `algorithmic.sty` encoding.
+- [x] Duplicate-group-aware splitting and a 70/80/85/90/95 percent recall threshold grid completed as separate evaluation artifacts.
+- [x] Installed Tectonic and compiled `report/latex/main.tex` successfully; warnings remain for underfull/overfull boxes and the legacy `algorithmic.sty` encoding.
+- [x] Completed five-seed validation-selected threshold sweep at 70, 80, 85, 90, and 95 percent recall targets (`artifacts/robustness_threshold_grid/`).
+- [x] Completed separate five-seed exact duplicate-predictor-group-aware evaluation (`artifacts/robustness_duplicate_group/`) and split prevalence/disjointness audit.
+- [x] Audited and separated the exploratory FGGN-family benchmark from the primary confirmatory table; documented its different optimizer/epoch budget and broader model search.
+- [x] Reconciled hybrid-ensemble metadata against `multiseed_blend_summary.csv`; the highest observed fixed-weight scan is 70/30 HGB/FGGN at PR-AUC 0.3730 +/- 0.0063, while the 80/20 blend is 0.3728 +/- 0.0064.
+- [x] Corrected the stale single-seed hybrid summary language so it is no longer presented as multi-seed evidence.

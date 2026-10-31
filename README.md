@@ -44,6 +44,24 @@ python scripts/download_data.py
 
 ## Run the experiments
 
+### Paper compilation and sensitivity evaluations
+
+The expanded paper is compiled with Tectonic:
+
+```bash
+brew install tectonic
+make paper
+```
+
+The compiled PDF is written to `report/latex/main.pdf`. The additional evaluations use separate output directories and do not overwrite the primary robustness artifacts:
+
+```bash
+make threshold-grid
+make duplicate-groups
+```
+
+The threshold-grid run selects thresholds on validation predictions for 70%, 80%, 85%, 90%, and 95% recall targets, then evaluates them on untouched test predictions. The duplicate-group run assigns identical predictor vectors to one partition only and records split prevalence in `artifacts/robustness_duplicate_group/split_audit.csv`.
+
 ### A. Fast, leakage-aware tabular baseline + proposed extension
 
 ```bash

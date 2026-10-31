@@ -4,7 +4,7 @@
 PYTHON := python3
 DATA := data/raw/heart_disease_health_indicators_BRFSS2015.csv
 
-.PHONY: help all audit tabular neural ablations robustness calibration subgroups figures smoke test clean
+.PHONY: help all audit tabular neural ablations robustness threshold-grid duplicate-groups calibration subgroups figures smoke test paper clean
 
 help:
 	@echo "Available commands:"
@@ -13,6 +13,9 @@ help:
 	@echo "  make neural        - Run paper-family neural architectures and FGGN"
 	@echo "  make ablations     - Run architectural ablation study (gating, resampling)"
 	@echo "  make robustness    - Run 5-seed confirmatory study"
+	@echo "  make threshold-grid - Run validation-selected 70/80/85/90/95% threshold sweep"
+	@echo "  make duplicate-groups - Run duplicate-predictor-group-aware evaluation"
+	@echo "  make paper         - Compile report/latex/main.tex with Tectonic"
 	@echo "  make calibration   - Run Platt scaling and Isotonic regression evaluation"
 	@echo "  make subgroups     - Run demographic fairness and slice analysis"
 	@echo "  make dca           - Run clinical Decision Curve Analysis"
@@ -38,6 +41,15 @@ ablations:
 robustness:
 	$(PYTHON) scripts/run_multiseed_robustness.py --seeds 42 101 2024 777 9999 --epochs 5 --out artifacts/robustness
 	$(PYTHON) scripts/verify_and_reconcile_metrics.py --predictions artifacts/robustness/test_predictions.csv.gz --summary artifacts/robustness/all_seeds_results.csv
+
+threshold-grid:
+	$(PYTHON) scripts/run_multiseed_robustness.py --data $(DATA) --out artifacts/robustness_threshold_grid --seeds 42 101 2024 777 9999 --epochs 5
+
+duplicate-groups:
+	$(PYTHON) scripts/run_multiseed_robustness.py --data $(DATA) --out artifacts/robustness_duplicate_group --seeds 42 101 2024 777 9999 --epochs 5 --split-strategy duplicate_group
+
+paper:
+	tectonic -X compile --keep-logs --synctex report/latex/main.tex
 
 calibration:
 	$(PYTHON) scripts/evaluate_calibration_and_stats.py --out artifacts/calibration

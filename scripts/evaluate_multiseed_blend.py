@@ -55,17 +55,23 @@ def main():
     print("\n=== MULTI-SEED BLEND EVALUATION (5 SEEDS) ===")
     print(res_df[["label", "pr_auc_mean", "pr_auc_std", "roc_auc_mean", "roc_auc_std", "brier_mean"]].to_string(index=False))
 
+    best = res_df.loc[res_df["pr_auc_mean"].idxmax()]
     finding = {
         "finding": (
-            "Blending HistGradientBoosting (80%) with FGGN (20%) consistently outperforms both individual models "
-            "across all 5 random seeds. Mean PR-AUC increases from 0.3717 (HGB solo) and 0.3689 (FGGN solo) to 0.3728 (+0.0010 gain). "
-            "ROC-AUC increases from 0.8483 to 0.8489 (+0.0006 gain). "
-            "This confirms hypothesis 2.5: neural physiological domain representations provide orthogonal information to decision trees."
+            "A fixed-weight exploratory scan across seven HistGradientBoosting/FGGN blends was evaluated "
+            "on the persisted five-seed test predictions. The highest observed mean is reported descriptively; "
+            "the weight was not selected on an independent validation layer and is not a confirmatory winner."
         ),
-        "best_blend": "HGB_80_FGGN_20",
-        "hgb_solo_pr_auc": 0.3717,
-        "fggn_solo_pr_auc": 0.3689,
-        "blend_pr_auc": 0.3728
+        "highest_observed_weight": {
+            "label": best["label"],
+            "pr_auc_mean": float(best["pr_auc_mean"]),
+            "pr_auc_std": float(best["pr_auc_std"]),
+            "roc_auc_mean": float(best["roc_auc_mean"]),
+            "roc_auc_std": float(best["roc_auc_std"]),
+        },
+        "hgb_solo_pr_auc": float(res_df.loc[res_df["weight_hist_gbt"] == 1.0, "pr_auc_mean"].iloc[0]),
+        "fggn_solo_pr_auc": float(res_df.loc[res_df["weight_hist_gbt"] == 0.0, "pr_auc_mean"].iloc[0]),
+        "selection_note": "Do not interpret the maximum across tested weights as independent confirmation."
     }
     with (OUT / "blend_summary.json").open("w", encoding="utf-8") as f:
         json.dump(finding, f, indent=2)
@@ -75,4 +81,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
