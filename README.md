@@ -24,6 +24,12 @@ python scripts/download_data.py
 
 or download the CSV manually from Kaggle and place it at the path above. The dataset is not bundled in this ZIP; check the dataset page's current terms before redistributing it. The official CDC file has a different schema (the full BRFSS survey), so do not pass it to these scripts without first building the paper's 22-column subset.
 
+`SHA256SUMS.txt` contains SHA-256 hashes for tracked repository files only. Generated experiment outputs under `artifacts/` and the local dataset under `data/raw/` are intentionally ignored and are not represented in that manifest. Regenerate the manifest after tracked-file changes with:
+
+```bash
+python scripts/generate_checksums.py
+```
+
 ## Environment
 
 Recommended: Google Colab or a Python 3.10/3.11 environment. For a Mac, a CPU run is possible; the PyTorch models will use MPS if supported. Start with the tabular pipeline before running neural models.
