@@ -24,6 +24,12 @@ python scripts/download_data.py
 
 or download the CSV manually from Kaggle and place it at the path above. The dataset is not bundled in this ZIP; check the dataset page's current terms before redistributing it. The official CDC file has a different schema (the full BRFSS survey), so do not pass it to these scripts without first building the paper's 22-column subset.
 
+`SHA256SUMS.txt` contains SHA-256 hashes for tracked repository files only. Generated experiment outputs under `artifacts/` and the local dataset under `data/raw/` are intentionally ignored and are not represented in that manifest. Regenerate the manifest after tracked-file changes with:
+
+```bash
+python scripts/generate_checksums.py
+```
+
 ## Environment
 
 Recommended: Google Colab or a Python 3.10/3.11 environment. For a Mac, a CPU run is possible; the PyTorch models will use MPS if supported. Start with the tabular pipeline before running neural models.
@@ -53,6 +59,14 @@ python scripts/run_tabular_experiments.py --data data/raw/heart_disease_health_i
 The held-out validation and test data always keep the original class distribution; resampling happens on training data only. The script saves metrics, fitted models, selected features and run metadata under the chosen output folder. It compares Logistic Regression, Random Forest, Extra Trees, Histogram Gradient Boosting and a diverse stacked blender. It reports (among others) accuracy, precision, recall/sensitivity, specificity, F1, ROC-AUC, PR-AUC and Brier score.
 
 The **proposed extension** has two parts: (1) a Feature-Group Gated Network (FGGN) that separately encodes clinical history, lifestyle, self-reported health, and access/demographic variables, then learns softmax gate weights for the group embeddings; and (2) leakage-aware, recall-constrained threshold selection. The tabular blender learns out-of-fold base-model predictions for its meta-learner. This changes the operating point; it is not a promise of higher accuracy. The score at threshold 0.50 is still reported as a separate comparison.
+
+To validate the installation without downloading the research dataset or running the full pipeline, use the synthetic smoke check:
+
+```bash
+make smoke
+```
+
+The generated `synthetic_smoke.csv` and `artifacts/smoke/` outputs are ignored by Git and must not be used as research evidence.
 
 ### Why the evaluation itself is a research gap
 The source dataset has 23,893 positive cases out of 253,680 (about 9.4%), so a majority-only predictor is already about 90.6% accurate on the original distribution. In Table 14 of the reference paper (PDF page 20), BlCVDD-Net is reported at about 91.7% accuracy, 96.0% precision and 87.8% recall; the base GRU's metrics are all near 90.5%. These metrics look consistent with a near-balanced evaluation set rather than the natural target prevalence. The article does not make the order of ADASYN versus cross-validation splits sufficiently transparent to rule out every concern. This does **not** prove leakage, but it is a strong reason for us to keep the test split untouched and record its prevalence.
