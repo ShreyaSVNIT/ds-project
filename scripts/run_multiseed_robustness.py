@@ -34,7 +34,7 @@ from torch.utils.data import DataLoader, TensorDataset
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
-from cardio.data import TARGET, load_dataset, make_splits, select_top_pbcc
+from cardio.data import TARGET, load_dataset, make_group_splits, make_splits, select_top_pbcc
 from cardio.metrics import choose_threshold_for_recall, metric_dict
 from cardio.torch_models import EnsCVDDNet, FeatureGroupGatedNet, UniformGroupNet
 
@@ -87,8 +87,11 @@ def run_seed_evaluation(
     epochs: int = 5,
     quick: bool = False,
     out_models_dir: Path | None = None,
-) -> tuple[list[dict], list[dict]]:
-    splits = make_splits(X, y, seed=seed)
+    split_strategy: str = "row",
+    target_recalls: tuple[float, ...] = (0.70, 0.80, 0.85, 0.90, 0.95),
+) -> tuple[list[dict], list[dict], list[dict], list[dict]]:
+    split_fn = make_splits if split_strategy == "row" else make_group_splits
+    splits = split_fn(X, y, seed=seed)
     Xtr, Xv, Xte, features, _ = select_top_pbcc(splits.X_train, splits.X_valid, splits.X_test, splits.y_train, top_k=21)
 
     # Standardization strictly on training data
@@ -104,6 +107,27 @@ def run_seed_evaluation(
 
     model_metrics = []
     prediction_records = []
+    validation_records = []
+    threshold_records = []
+
+    def persist_predictions(model_name, pv, pt, default_threshold):
+        for idx, y_true, prob in zip(splits.valid_indices, y_valid, pv):
+            validation_records.append({
+                "seed": seed, "model": model_name, "split": "validation",
+                "row_idx": int(idx), "y_true": int(y_true), "y_prob": float(prob),
+            })
+        for target_recall in target_recalls:
+            threshold = choose_threshold_for_recall(
+                y_valid, pv, minimum_recall=target_recall
+            )
+            metrics = metric_dict(y_test, pt, threshold)
+            threshold_records.append({
+                "seed": seed, "model": model_name,
+                "target_recall": target_recall,
+                "validation_threshold": threshold,
+                "validation_recall": metric_dict(y_valid, pv, threshold)["recall_sensitivity"],
+                **{f"test_{key}": value for key, value in metrics.items()},
+            })
 
     # 1. Logistic Regression (balanced)
     print(f"  [Seed {seed}] Training Logistic Regression...")
@@ -114,6 +138,7 @@ def run_seed_evaluation(
     pv_lr = lr_model.predict_proba(A_valid)[:, 1]
     pt_lr = lr_model.predict_proba(A_test)[:, 1]
     th_lr = choose_threshold_for_recall(y_valid, pv_lr, minimum_recall=0.80)
+    persist_predictions("logistic_regression", pv_lr, pt_lr, th_lr)
 
     for p_name, p_thresh in [("fixed_0.50", 0.5), ("validation_recall_constrained", th_lr)]:
         m = metric_dict(y_test, pt_lr, p_thresh)
@@ -147,6 +172,7 @@ def run_seed_evaluation(
     pv_hgb = hgb_model.predict_proba(A_valid)[:, 1]
     pt_hgb = hgb_model.predict_proba(A_test)[:, 1]
     th_hgb = choose_threshold_for_recall(y_valid, pv_hgb, minimum_recall=0.80)
+    persist_predictions("hist_gradient_boosting", pv_hgb, pt_hgb, th_hgb)
 
     for p_name, p_thresh in [("fixed_0.50", 0.5), ("validation_recall_constrained", th_hgb)]:
         m = metric_dict(y_test, pt_hgb, p_thresh)
@@ -181,6 +207,7 @@ def run_seed_evaluation(
         pv = predict_torch_prob(m_inst, A_valid, device)
         pt = predict_torch_prob(m_inst, A_test, device)
         th = choose_threshold_for_recall(y_valid, pv, minimum_recall=0.80)
+        persist_predictions(name, pv, pt, th)
 
         for p_name, p_thresh in [("fixed_0.50", 0.5), ("validation_recall_constrained", th)]:
             m = metric_dict(y_test, pt, p_thresh)
@@ -200,7 +227,7 @@ def run_seed_evaluation(
             torch.save({"state_dict": m_inst.state_dict(), "features": features, "seed": seed},
                        out_models_dir / f"{name}_seed_{seed}.pt")
 
-    return model_metrics, prediction_records
+    return model_metrics, prediction_records, validation_records, threshold_records
 
 
 def main():
@@ -210,6 +237,7 @@ def main():
     p.add_argument("--seeds", nargs="+", type=int, default=[42, 101, 2024, 777, 9999])
     p.add_argument("--epochs", type=int, default=5)
     p.add_argument("--quick", action="store_true")
+    p.add_argument("--split-strategy", choices=["row", "duplicate_group"], default="row")
     args = p.parse_args()
 
     out_dir = Path(args.out)
@@ -225,14 +253,19 @@ def main():
 
     all_metrics = []
     all_predictions = []
+    all_validation_predictions = []
+    all_threshold_sweeps = []
 
     for seed in args.seeds:
         print(f"\n=================== RUNNING SEED {seed} ===================")
-        m_list, p_list = run_seed_evaluation(
-            X, y, seed=seed, device=device, epochs=args.epochs, quick=args.quick, out_models_dir=models_dir
+        m_list, p_list, v_list, sweep_list = run_seed_evaluation(
+            X, y, seed=seed, device=device, epochs=args.epochs, quick=args.quick,
+            out_models_dir=models_dir, split_strategy=args.split_strategy
         )
         all_metrics.extend(m_list)
         all_predictions.extend(p_list)
+        all_validation_predictions.extend(v_list)
+        all_threshold_sweeps.extend(sweep_list)
 
     # Save all raw metrics
     metrics_df = pd.DataFrame(all_metrics)
@@ -243,6 +276,12 @@ def main():
     pred_path = out_dir / "test_predictions.csv.gz"
     pred_df.to_csv(pred_path, index=False, compression="gzip")
     print(f"\nSaved {len(pred_df):,} per-example test predictions to {pred_path}")
+    pd.DataFrame(all_validation_predictions).to_csv(
+        out_dir / "validation_predictions.csv.gz", index=False, compression="gzip"
+    )
+    pd.DataFrame(all_threshold_sweeps).to_csv(
+        out_dir / "threshold_sweep.csv", index=False
+    )
 
     # Compute and format Mean ± Std summary
     constrained = metrics_df[metrics_df["threshold_policy"] == "validation_recall_constrained"].copy()
@@ -283,6 +322,7 @@ def main():
             "epochs": args.epochs,
             "device": str(device),
             "target_recall": 0.80,
+            "split_strategy": args.split_strategy,
             "n_total_rows": len(X),
             "methodology_note": "Repeated holdout splits share data overlap; variation reflects split sensitivity, not independent samples."
         }, f, indent=2)

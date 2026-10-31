@@ -10,6 +10,8 @@
 \usepackage{url}
 \usepackage{cite}
 \usepackage{microtype}
+\usepackage{array}
+\usepackage{balance}
 
 \graphicspath{{figures/}}
 
@@ -27,155 +29,335 @@ Email: \{\IEEEauthorrefmark{1}person1, \IEEEauthorrefmark{2}person2, \IEEEauthor
 \maketitle
 
 \begin{abstract}
-Recent literature has proposed hybrid deep neural architectures combining 1D Convolutional Neural Networks and Gated Recurrent Units (EnsCVDD-Net, BlCVDD-Net) for cardiovascular disease (CVD) detection from tabular survey data, reporting accuracies exceeding $91\%$ and precisions near $96\%$ under ADASYN oversampling. In this study, we conduct an auditable reimplementation and methodological audit of these architectures on the 253,680-record CDC BRFSS 2015 cohort. We mathematically prove that the reported precision/recall metrics are mutually incompatible with published accuracy under the natural positive survey prevalence ($9.42\%$), demonstrating that published benchmarks reflect an artificially balanced ($\approx 52.3\%$) evaluation distribution. We introduce a leakage-safe protocol that strictly confines preprocessing, feature ranking, and class weighting to training folds, preserving untouched natural prevalence on validation and test partitions. To address the invalid inductive bias of sequential 1D convolutions on arbitrary column orderings, we formulate the \textbf{Feature-Group Gated Network (FGGN)} and an un-gated \textbf{UniformGroupNet}, structuring predictors into four physiologically grounded domain representations (\textit{Clinical History}, \textit{Lifestyle}, \textit{Self-Reported Health}, \textit{Demographics/Access}). Across a rigorous 5-seed study (951,300 persisted test predictions), Histogram Gradient Boosting achieves the top overall ranking performance (PR-AUC: $0.3717 \pm 0.0067$, ROC-AUC: $0.8483 \pm 0.0026$). While domain-grouped architectures significantly outperform EnsCVDD-Net (PR-AUC: $0.3563 \pm 0.0055$, paired $\Delta = +0.0126$, $p = 0.0011$), learned softmax gating provides no ranking benefit over uniform semantic group pooling ($0.3689$ vs. $0.3693$, $p = 0.448$), establishing an honest neutral finding regarding model complexity. An 80/20 probability ensemble of HistGBT and FGGN achieves superior ranking ($0.3728 \pm 0.0064$). Validation-fitted Isotonic regression restores probability calibration, reducing test Brier score from $0.1654$ to $0.0703$ (beating the $0.0853$ constant-prevalence baseline). Finally, demographic subgroup analysis reveals that precision scales directly with baseline stratum prevalence ($17.7\%$ in young adults vs. $25.7\%$ in older adults), underscoring that population prevalence dynamics must govern the operational deployment of automated screening models.
+Deep architectures have recently been proposed for cardiovascular disease classification from the CDC Behavioral Risk Factor Surveillance System (BRFSS), but reported metrics can be difficult to interpret when resampling, prevalence, and threshold selection are incompletely specified. We perform a leakage-aware structural reimplementation and extension of EnsCVDD-Net on the 253,680-record BRFSS 2015 Heart Disease Health Indicators cohort. Raw rows are split before learned preprocessing; validation and test partitions retain natural prevalence; and all reported operating thresholds and calibrators are learned without access to test labels. The published combination of accuracy, precision, and recall is mathematically incompatible with the cohort prevalence: the reported precision and recall imply approximately 52.3\% positive prevalence and approximately 98.5\% accuracy under a simple confusion-matrix reconstruction, but this does not identify the original split or resampling procedure. Across five persisted repeated holdouts, Histogram Gradient Boosting has the highest mean PR-AUC ($0.3717\pm0.0067$) and ROC-AUC ($0.8483\pm0.0026$). Domain-grouped neural models exceed the sequential CNN--GRU reimplementation in PR-AUC, whereas learned group gating does not outperform uniform pooling. An 80/20 HistGradientBoosting--FGGN probability blend is numerically strongest ($0.3728\pm0.0064$ PR-AUC), but the improvement is small and not independently established as statistically significant. Validation-only isotonic calibration reduces the mean test Brier score from $0.1654$ to $0.0703$, below the constant-prevalence baseline of $0.0853$. Subgroup and decision-curve analyses show why natural prevalence and operating policy must accompany discrimination metrics. These findings support reproducible evaluation of self-reported heart-disease history classification; they do not establish prospective cardiovascular risk prediction or clinical readiness.
 \end{abstract}
 
 \begin{IEEEkeywords}
-Cardiovascular disease screening, tabular deep learning, EnsCVDD-Net, class imbalance, probability calibration, decision curve analysis, data leakage.
+Cardiovascular disease screening, tabular deep learning, EnsCVDD-Net, class imbalance, probability calibration, decision curve analysis, data leakage, reproducibility.
 \end{IEEEkeywords}
 
 \section{Introduction}
-Cardiovascular disease (CVD) remains the leading cause of global mortality, accounting for approximately 17.9 million deaths annually. In primary healthcare systems, population-scale risk assessment relies heavily on standardized, low-cost behavioral surveillance questionnaires such as the Behavioral Risk Factor Surveillance System (BRFSS) conducted by the Centers for Disease Control and Prevention (CDC). Unlike clinical cohorts containing laboratory assays or continuous biomarkers, national health surveys collect self-reported, low-cardinality discrete responses regarding pre-existing diagnoses, demographic attributes, and lifestyle factors.
+Cardiovascular disease (CVD) is a major public-health burden and a frequent target for population risk stratification. Large health surveys can support inexpensive first-stage screening because they capture information about diagnosed conditions, health status, behavior, healthcare access, and demographics at scale. The Behavioral Risk Factor Surveillance System (BRFSS) is particularly useful for methodological research because its variables are widely available, low cost, and mostly categorical or ordinal.
 
-Designing automated machine learning screening tools from survey data presents two fundamental challenges:
+This setting is not equivalent to prospective prediction of a future cardiovascular event. The target used here, \texttt{HeartDiseaseorAttack}, records a respondent's self-reported history of coronary heart disease or myocardial infarction at the survey time. We therefore study classification of an existing self-reported history, not diagnosis, time-to-event prediction, or prediction of future disease. This distinction matters for interpretation, transportability, and any eventual clinical validation.
+
+The cohort is also strongly imbalanced: the positive prevalence is $9.42\%$. A classifier that always predicts the negative class obtains $90.58\%$ accuracy and zero sensitivity. Accuracy alone therefore rewards the majority class and does not describe screening value. Precision-recall area under the curve (PR-AUC), sensitivity, specificity, precision, calibration, confusion counts, and decision utility are required to understand performance in this regime. For a screening policy, sensitivity is often constrained first and a threshold is then selected to reduce unnecessary referrals. The threshold itself is a decision learned from validation data, not a property of the ranking model.
+
+Khan \emph{et al.} proposed EnsCVDD-Net, a hybrid one-dimensional convolutional and gated recurrent architecture, and BlCVDD-Net, a blending model, for this BRFSS-derived task~\cite{khan2024heart}. Their reported accuracy, precision, and recall motivate an audit because a metric triplet can imply a different evaluation prevalence from the natural cohort. The architecture also treats the feature columns as a sequence, although the order of survey questions is not a physical or temporal coordinate. These concerns motivate a controlled reimplementation and a domain-grouped extension.
+
+\subsection{Research Questions}
+The study addresses four questions:
 \begin{enumerate}
-    \item \textbf{Extreme Class Imbalance:} In the standardized CDC BRFSS 2015 cohort, positive CVD prevalence is approximately $9.42\%$. In this regime, unconstrained accuracy is severely misleading; a trivial majority-class baseline that predicts all individuals are healthy achieves $90.58\%$ accuracy while providing zero screening sensitivity ($0\%$ recall).
-    \item \textbf{Clinical Asymmetry \& Recall Priority:} Missing an individual with cardiovascular pathology (False Negative) carries devastating medical consequences, whereas a false alarm (False Positive) prompts non-invasive confirmatory testing. Consequently, clinical screening models must be deployed under explicit sensitivity constraints ($\text{Recall} \ge 80\%$) rather than default $0.50$ probability thresholds.
+    \item \textbf{RQ1: Metric consistency and leakage.} Are the published claims reproducible when raw rows are split before preprocessing and evaluation prevalence remains natural?
+    \item \textbf{RQ2: Inductive bias.} Does grouping predictors by survey and health domain improve over an arbitrary sequential CNN--GRU representation?
+    \item \textbf{RQ3: Gating value.} Does learned group weighting improve ranking over an otherwise identical uniform-pooling model?
+    \item \textbf{RQ4: Operational evaluation.} How do calibration, recall-constrained thresholds, decision curves, and subgroup prevalence affect interpretation?
 \end{enumerate}
 
-Recently, Khan et al.~\cite{khan2024heart} proposed \textbf{EnsCVDD-Net} (a 1D CNN + GRU hybrid) and \textbf{BlCVDD-Net} (an MLP meta-blender) on the CDC BRFSS 2015 dataset, reporting $>91.7\%$ accuracy, $96.0\%$ precision, and $87.8\%$ recall under ADASYN oversampling. However, sequential convolutions on static survey columns impose questionable spatial and temporal inductive biases. Crucially, the mathematical consistency of reporting $96.0\%$ precision alongside $87.8\%$ recall and $91.7\%$ accuracy under $9.42\%$ natural prevalence warrants formal audit.
+\subsection{Contributions}
+Our contributions are: (i) an auditable structural reimplementation of the paper-family model under natural-prevalence evaluation; (ii) an explicit prevalence-consistency calculation that avoids inferring the original split procedure; (iii) FGGN and UniformGroupNet, which isolate domain grouping from learned gating; (iv) five-seed persistence and reconciliation of 951,300 test predictions; (v) validation-only probability calibration, subgroup, deduplication, resampling, explainability, and decision-curve analyses; and (vi) a critical account of what the existing artifacts do and do not support. The models are structural reimplementations because executable source code for the original paper was not supplied.
 
-In this work, we present an auditable, multi-seed reimplementation, mathematical audit, and physiological domain-grouped extension of EnsCVDD-Net.
-
-\section{Dataset Contract \& Data Integrity Audit}
-\subsection{Cryptographic Fingerprint \& Contract}
-All experiments strictly adhere to the Kaggle-derived CDC BRFSS 2015 Heart Disease Health Indicators benchmark:
-\begin{itemize}
-    \item \textbf{Dimensions:} 253,680 individual patient records across 21 predictor variables and 1 binary target (\texttt{HeartDiseaseorAttack}).
-    \item \textbf{Cryptographic Hash:} Audited and cryptographically locked with SHA-256 hash \texttt{953fb23bb131736d7879539a071d3f6d1eaae8d4867ab05335d0ba89b94d5f99}.
-    \item \textbf{Class Distribution:} 229,787 negatives ($90.58\%$) vs. 23,893 positives ($9.42\%$) with zero missing values.
-\end{itemize}
-
-\subsection{Deduplication Sensitivity Audit}
-Our audit identified 23,899 duplicate records ($9.42\%$) within the dataset. In low-cardinality survey data, identical feature vectors represent independent respondents sharing identical risk profiles rather than clerical errors. Removing all duplicates shifts prevalence marginally to $10.32\%$, while model performance rankings remain identical (HistGradientBoosting achieves PR-AUC $0.3732$ raw vs. $0.3835$ deduplicated). To preserve comparability with Khan et al.~\cite{khan2024heart}, the full 253,680 cohort is maintained as the primary benchmark.
-
-\subsection{Leakage-Safe Stratification Boundary}
-We enforce a strict boundary: raw data is partitioned into stratified $70\%$ Training ($N=177,576$), $15\%$ Validation ($N=38,052$), and $15\%$ Test ($N=38,052$) sets. Positive prevalence is strictly preserved at $9.42\%$ across all partitions. Scalers, Point-Biserial Correlation (PBCC) rankings, and thresholds are fitted exclusively on training data.
-
-\section{Related Work}
-We contextualize our study across four pillars:
-\begin{enumerate}
-    \item \textbf{Tree Ensembles vs. Deep Learning:} Grinsztajn et al.~\cite{grinsztajn2022tree} and Shwartz-Ziv \& Armon~\cite{shwartz2022tabular} established that gradient-boosted decision trees consistently outperform neural networks on tabular benchmarks.
-    \item \textbf{Feature Gating:} Dynamic feature selection via TabNet~\cite{arik2021tabnet} and Temporal Fusion Transformers~\cite{lim2021temporal} inspires our domain gating, but we operate over physiologically defined groups rather than arbitrary single columns.
-    \item \textbf{Probability Calibration:} Van Calster et al.~\cite{vancalster2016calibration} and Wallace \& Dahabreh~\cite{wallace2012cost} formalized clinical calibration requirements, showing that cost-sensitive adjustments distort posterior probabilities.
-    \item \textbf{Resampled Inference:} Nadeau \& Bengio~\cite{nadeau2003inference} formulated variance corrections for repeated holdouts sharing training overlap.
-\end{enumerate}
-
-\section{Methodological Audit of Published Work}
-\subsection{The Prevalence Inconsistency Proof}
-Analytically, Classification Accuracy $A$, Positive Prevalence $\pi$, Sensitivity (Recall $R$), and Positive Predictive Value (Precision $P$) are linked by:
-\begin{equation}
-A = 1 - \pi + \pi R \left(2 - \frac{1}{P}\right)
-\label{eq:consistency}
-\end{equation}
-
-\textbf{Proof 1 (Natural Prevalence):} Substituting $\pi = 0.094186$, $R = 0.878$, and $P = 0.960$ into Eq.~(\ref{eq:consistency}) mathematically requires an Accuracy of:
-\begin{equation}
-A_{\text{derived}} = 98.51\%
-\end{equation}
-This contradicts the published accuracy of $91.70\%$ by $+6.81$ percentage points.
-
-\textbf{Proof 2 (Precision Upper Bound):} Given $A = 0.917$, $R = 0.878$, and $\pi = 0.0942$, the theoretical maximum attainable precision is $53.63\%$, which is $42.37$ percentage points below the reported $96.0\%$.
-
-\textbf{Proof 3 (Reconciled Prevalence):} Solving for the synthetic positive prevalence $\pi^*$ that reconciles all three reported metrics yields:
-\begin{equation}
-\pi^* = \frac{1 - 0.917}{1 - 0.878(2 - 1/0.96)} = 52.34\%
-\end{equation}
-This demonstrates that the reported numbers are mathematically characteristic of an artificially balanced ($\approx 50:50$) test partition.
-
-\subsection{Empirical Failure of ADASYN on Survey Features}
-ADASYN continuous synthetic interpolation creates fractional levels for discrete indicators (e.g., \texttt{Smoker}=0.63). On HistGradientBoosting, ADASYN drops PR-AUC from $0.3732$ to $0.3306$ ($-0.0426$), whereas Random Oversampling preserves the discrete domain ($0.3735$).
-
-\section{Domain-Grouped Neural Architectures}
-\subsection{Physiological Domain Grouping}
-We partition the 21 predictors into four clinical domain groups:
-\begin{enumerate}
-    \item \textit{Clinical History} ($d_1=6$): \texttt{HighBP}, \texttt{HighChol}, \texttt{CholCheck}, \texttt{Stroke}, \texttt{Diabetes}, \texttt{DiffWalk}.
-    \item \textit{Lifestyle Factors} ($d_2=6$): \texttt{BMI}, \texttt{Smoker}, \texttt{PhysActivity}, \texttt{Fruits}, \texttt{Veggies}, \texttt{HvyAlcoholConsump}.
-    \item \textit{Self-Reported Health} ($d_3=3$): \texttt{GenHlth}, \texttt{MentHlth}, \texttt{PhysHlth}.
-    \item \textit{Access \& Demographics} ($d_4=6$): \texttt{AnyHealthcare}, \texttt{NoDocbcCost}, \texttt{Sex}, \texttt{Age}, \texttt{Education}, \texttt{Income}.
-\end{enumerate}
-
-\subsection{Architectural Specifications}
-\textbf{Feature-Group Gated Network (FGGN):}
-Each domain $g$ is encoded by an MLP $E_g: \mathbb{R}^{d_g} \to \mathbb{R}^{16}$. Embeddings $\mathbf{z}_g = E_g(\mathbf{x}_g)$ are concatenated into $\mathbf{z}_{\text{joint}} \in \mathbb{R}^{64}$. A softmax gating head computes:
-\begin{equation}
-\mathbf{w} = \text{softmax}(W_{\text{gate}} \mathbf{z}_{\text{joint}} + b_{\text{gate}})
-\end{equation}
-The fused representation $\mathbf{z}_{\text{fused}} = \sum_{g=1}^4 w_g \mathbf{z}_g$ is passed to classifier $C(\mathbf{z}_{\text{fused}})$.
-
-\textbf{UniformGroupNet (Ablation):} Replaces learned gating with equal $1/4$ uniform pooling: $\mathbf{z}_{\text{fused}} = \frac{1}{4} \sum_{g=1}^4 \mathbf{z}_g$.
-
-\textbf{InstanceGatedNet (Extension):} Employs a non-linear bottleneck gate $\mathbf{w}_i = \text{softmax}(W_2 \text{ReLU}(W_1 \mathbf{z}_{\text{joint}, i} + b_1) + b_2)$ providing sample-specific dynamic routing.
-
-\subsection{Operational Threshold Policy}
-For every model, decision threshold $\tau^*$ is selected on the validation set to satisfy:
-\begin{equation}
-\tau^* = \max \{ \tau \in [0, 1] \mid \text{Recall}_{\text{val}}(\tau) \ge 0.80 \}
-\end{equation}
-This threshold is frozen before held-out test evaluation.
-
-\section{Experimental Protocol \& Results}
-Across 5 random seeds (Seeds 42, 101, 2024, 777, 9999; 951,300 persisted test predictions), models were evaluated on untouched test partitions ($N=38,052$ per seed):
+\section{Research Gaps and Contribution Map}
+Prior work leaves six connected gaps. First, published metrics may be reported under a prevalence different from the natural cohort, making accuracy and precision comparisons ambiguous. Second, ADASYN and SMOTE interpolate encoded survey variables and can create fractional values for binary or ordinal responses~\cite{chawla2002smote,he2008adasyn}. Third, sequential convolutions impose locality on an unordered table. Fourth, a learned feature gate can appear interpretable without demonstrating incremental ranking value. Fifth, calibration and operational thresholds are often secondary to accuracy. Sixth, single-seed results do not reveal split sensitivity.
 
 \begin{table*}[t]
 \centering
-\caption{Multi-Seed Test Performance under Natural Prevalence ($9.42\%$) across 5 Fixed Random Seeds (Mean $\pm$ Std)}
-\label{tab:main_results}
-\begin{tabular}{lcccccc}
+\caption{Research gaps and the corresponding evidence in this study.}
+\label{tab:gap_contribution}
+\small
+\begin{tabular}{p{0.20\textwidth}p{0.29\textwidth}p{0.40\textwidth}}
 \toprule
-\textbf{Model Architecture} & \textbf{PR-AUC (Mean $\pm$ Std)} & \textbf{ROC-AUC} & \textbf{Uncal. Brier} & \textbf{Recall ($\tau^*$)} & \textbf{Precision} & \textbf{Specificity} \\
+\textbf{Gap} & \textbf{Risk to interpretation} & \textbf{Contribution or audit response}\\
 \midrule
-\textbf{HistGradientBoosting} & \textbf{0.3717 $\pm$ 0.0067} & \textbf{0.8483 $\pm$ 0.0026} & 0.1654 $\pm$ 0.0016 & $79.66\% \pm 0.81\%$ & \textbf{24.66\% $\pm$ 0.42\%} & \textbf{74.69\% $\pm$ 0.68\%} \\
-\textbf{UniformGroupNet} & 0.3693 $\pm$ 0.0070 & 0.8478 $\pm$ 0.0026 & 0.1672 $\pm$ 0.0035 & $79.75\% \pm 0.99\%$ & 24.59\% $\pm$ 0.46\% & 74.55\% $\pm$ 0.84\% \\
-\textbf{FGGN (Gated Neural)} & 0.3689 $\pm$ 0.0068 & 0.8478 $\pm$ 0.0026 & 0.1659 $\pm$ 0.0046 & $79.78\% \pm 0.61\%$ & 24.64\% $\pm$ 0.46\% & 74.61\% $\pm$ 0.75\% \\
-\textbf{Logistic Regression} & 0.3673 $\pm$ 0.0063 & 0.8462 $\pm$ 0.0029 & 0.1654 $\pm$ 0.0015 & $79.60\% \pm 0.95\%$ & 24.41\% $\pm$ 0.47\% & 74.36\% $\pm$ 0.81\% \\
-\textbf{EnsCVDD-Net (Paper)} & 0.3563 $\pm$ 0.0055 & 0.8442 $\pm$ 0.0030 & 0.1671 $\pm$ 0.0101 & $79.82\% \pm 1.13\%$ & 24.08\% $\pm$ 0.44\% & 73.82\% $\pm$ 0.85\% \\
+Prevalence inconsistency & Accuracy and precision can be incomparable across resampled and natural populations. & Reconstruct the implied prevalence from published precision and recall; state that this is an implication, not proof of an exact original split.\\
+Synthetic values on discrete variables & Interpolation may leave the encoded survey manifold. & Compare no resampling, class weighting, and ADASYN; retain natural validation and test partitions.\\
+Sequential tabular inductive bias & Column adjacency has no inherent spatial or temporal meaning. & Compare EnsCVDD-Net with four semantic group encoders and a uniform-pooling control.\\
+Uncertain gating benefit & Attention weights can add complexity without predictive gain. & Pair FGGN with parameter-matched UniformGroupNet and report paired seed comparisons.\\
+Insufficient operational evaluation & Ranking metrics do not specify a screening workload or probability meaning. & Select thresholds on validation data, evaluate natural-prevalence test recall, calibration, and decision curves.\\
+Limited reproducibility & One split can hide instability and make significance claims fragile. & Persist predictions across five seeds, reconcile metrics, and use corrected repeated-holdout intervals as sensitivity analysis.\\
 \bottomrule
 \end{tabular}
 \end{table*}
 
-\subsection{Key Findings}
-\begin{enumerate}
-    \item \textbf{Domain Grouping Gain:} Both domain-grouped models significantly outperform EnsCVDD-Net ($\Delta = +0.0126$, $p = 0.0011$).
-    \item \textbf{Neutral Gating Finding:} FGGN ($0.3689$) performs identically to UniformGroupNet ($0.3693$, $p = 0.448$). Softmax gating adds parameters without ranking gain.
-    \item \textbf{Novel Extensions:} `InstanceGatedNet` lifts PR-AUC to $0.3698$. An 80/20 probability ensemble of HistGBT and FGGN achieves superior ranking ($0.3728 \pm 0.0064$), proving orthogonal representation learning.
-\end{enumerate}
+\section{Related Work}
+\subsection{Machine Learning for Cardiovascular Disease Prediction}
+Classical cardiovascular prediction models established the value of combining demographic, clinical, and behavioral predictors, with the Framingham equations providing a prominent example of multivariable risk estimation~\cite{dagsostino2008general}. Contemporary reviews find that machine learning can model nonlinear interactions and may improve discrimination in some settings, but they also emphasize heterogeneity in outcome definitions, external validation, and calibration~\cite{krittanawong2020machine,liu2019machine}. A systematic review of cardiovascular prediction models is therefore relevant to this study not because BRFSS classification is a replacement for clinical risk equations, but because it highlights the distinction between discrimination, calibration, and transportability.
 
-\section{Statistical Evaluation \& Inference}
-Accounting for $70\%$ training overlap across splits, we compute the Nadeau-Bengio corrected variance: $\hat{\sigma}^2_{\text{corr}} = (1/5 + 38,052/177,576)\hat{S}^2 = 0.414 \hat{S}^2$. 
-\begin{itemize}
-    \item \textbf{FGGN vs. UniformGroupNet:} Nadeau-Bengio $95\%$ CI $[-0.00177, +0.00095]$, $p = 0.448$; Wilcoxon $p = 0.4375$, Cohen's $d = -0.54$ (Confirms neutral finding).
-    \item \textbf{FGGN vs. EnsCVDD-Net:} Nadeau-Bengio $95\%$ CI $[+0.00844, +0.01680]$, $p = 0.0011$; Cohen's $d = +5.39$ (Significant domain grouping advantage).
-\end{itemize}
+Khan \emph{et al.} introduced EnsCVDD-Net and BlCVDD-Net for the BRFSS-derived heart-disease-history task~\cite{khan2024heart}. Their CNN--GRU design combines local convolutional processing, recurrent aggregation, and ensemble blending. The approach is relevant as a paper-family benchmark, but its interpretation depends on the prevalence and resampling boundary. Our work does not claim that the original authors used a particular hidden split; instead, it shows what prevalence is implied by the published metric combination and evaluates a controlled alternative.
 
-\section{Probability Calibration (Van Calster Hierarchy)}
-Class weighting shifts logits by $\approx \ln(w_+) \approx 2.26$, degrading uncalibrated test Brier score to $0.1654$ (worse than the $0.0853$ constant-prevalence baseline $\bar{y}(1-\bar{y})$). Validation-fitted Isotonic regression reduces test Brier score to \textbf{0.0703} (an $18\%$ improvement over baseline), restoring calibration intercept to $-0.058$ and slope to $0.963$ (moderate calibration).
+\subsection{Deep Learning Architectures for Healthcare and Tabular Data}
+Neural models are attractive in healthcare because they can learn nonlinear representations and combine heterogeneous inputs. In tabular data, however, the inductive structure differs from images and time series. TabNet uses sequential attentive masks to select features at decision steps and offers an interpretable mask mechanism~\cite{arik2021tabnet}. NODE uses oblivious differentiable trees to combine neural optimization with tree-like partitions~\cite{popov2020neural}. FT-Transformer tokenizes individual features and applies transformer layers to tabular inputs~\cite{gorishniy2021revisiting}, while SAINT adds row attention and contrastive pretraining to column attention~\cite{somepalli2021saint}. These methods demonstrate that modern tabular networks need not assume a simple sequential convolution, but they also show that additional flexibility does not guarantee improvement on medium-sized, low-cardinality tables.
 
-\section{Clinical Decision Curve Analysis (DCA)}
-Evaluating Net Benefit $\text{NB} = \frac{\text{TP}}{N} - \frac{\text{FP}}{N} (\frac{p_t}{1 - p_t})$ across clinical threshold probabilities $p_t \in [1\%, 35\%]$, HistGradientBoosting and FGGN provide identical, substantial net clinical utility over ``Screen All'' and ``Screen None'' policies. At $p_t = 10\%$, FGGN yields $\text{NB} = 0.0634$ vs. $0.0581$ for EnsCVDD-Net, identifying $5.3$ additional true cases per 1,000 screened individuals at equal false alarm burden.
+Our FGGN is narrower than these architectures. It does not claim state-of-the-art tabular representation learning; it tests whether a transparent, pre-specified grouping of survey variables provides a useful inductive bias for this task. Its gate operates over four group embeddings rather than raw feature tokens, so gate weights are model allocations and not causal effects.
 
-\section{Demographic Subgroup Dynamics}
-Auditing demographic strata reveals that operating precision scales directly with underlying base prevalence: $17.74\%$ in young adults (prevalence $1.38\%$) vs. $25.71\%$ in older adults ($17.25\%$). A calibration audit shows calibration slopes remain stable ($\approx 1.0$), but intercepts shift systematically with base prevalence. Single-threshold systems must be deployed with stratum-specific awareness.
+\subsection{Tree Ensembles versus Neural Networks}
+Large empirical studies report that gradient-boosted decision trees remain difficult to beat on typical tabular datasets. Grinsztajn \emph{et al.} attribute this advantage partly to robustness to uninformative features, irregular functions, and feature rotations~\cite{grinsztajn2022tree}. Shwartz-Ziv and Armon similarly conclude that tree ensembles often outperform neural networks without extensive tuning~\cite{shwartz2022tabular}. These results motivate HistGradientBoosting as a serious baseline rather than a weak comparator. Our results are consistent with that literature: the tree model ranks first, while grouped neural models improve over the sequential paper-family implementation but do not clearly exceed the tree.
 
-\section{Explainability \& Feature Attribution}
-Learned FGGN gate allocations assign $31.8\%$ to Clinical History, $30.3\%$ to Self-Reported Health, $25.8\%$ to Lifestyle, and $12.1\%$ to Demographics. Permutation importance and Tree SHAP identify \texttt{GenHlth}, \texttt{Age}, \texttt{HighBP}, \texttt{DiffWalk}, and \texttt{Stroke} as primary drivers ($\rho = 0.847$ rank correlation between PBCC and Gini).
+\subsection{Class Imbalance and Synthetic Oversampling}
+SMOTE creates minority examples by interpolation between neighbors~\cite{chawla2002smote}; ADASYN makes the synthetic density adaptive to local difficulty~\cite{he2008adasyn}. Both can be useful for continuous data, but interpolation is not automatically meaningful for binary flags, ordinal scales, or survey codes. Sampling must also occur inside training folds: resampling before a split allows near-duplicates or synthetic descendants to influence evaluation. Class weighting changes the loss without creating new records, although it can distort probability estimates. Wallace and Dahabreh discuss this probability-estimation problem in imbalanced settings~\cite{wallace2012cost}. We therefore treat ADASYN as an ablation and preserve natural validation and test prevalence.
+
+\subsection{Feature Selection, Attention, and Feature-Group Learning}
+Point-biserial screening, permutation importance, and tree-based importance are useful descriptive tools but can be unstable under correlated predictors. Attention and gating mechanisms offer a learned alternative, as illustrated by TabNet~\cite{arik2021tabnet} and variable-selection components in temporal fusion transformers~\cite{lim2021temporal}. Nevertheless, an attention value is not a causal effect and an expressive gate can fail to improve generalization. FGGN tests this issue directly by comparing learned softmax pooling with equal pooling over the same semantic groups. The resulting neutral comparison is important: grouping and gating should not be conflated.
+
+\subsection{Calibration and Clinical Prediction Evaluation}
+A ranking model and a probability model are different objects. Van Calster \emph{et al.} describe a hierarchy from calibration-in-the-large and calibration slope to more demanding forms of calibration~\cite{vancalster2016calibration}. Platt scaling and isotonic regression are common post-hoc approaches~\cite{platt1999probabilistic,niculescu2005predicting}, while modern neural networks can be overconfident even when discrimination is acceptable~\cite{guo2017calibration}. We fit calibrators on validation predictions only and evaluate on untouched test predictions. PR-AUC is emphasized under imbalance because precision depends on prevalence; the relationship between ROC and PR displays is discussed by Saito and Rehmsmeier~\cite{saito2015precision}.
+
+Decision curve analysis translates a probability threshold into standardized net benefit and compares a model with screen-all and screen-none policies~\cite{vickers2006decision}. It is useful here only as a decision-theoretic sensitivity analysis: the BRFSS target is not a validated clinical endpoint and the threshold probability is not a guideline recommendation.
+
+\subsection{Statistical Evaluation and Reproducibility}
+Repeated holdout results are dependent because training sets overlap. Nadeau and Bengio proposed a corrected resampled variance estimator for this setting~\cite{nadeau2003inference}; Dietterich discussed the hazards of naive tests for classifier comparisons~\cite{dietterich1998approximate}. The correction is used here as a sensitivity analysis for five repeated holdouts, not as a guarantee that five splits establish population-level superiority. Bootstrap intervals and Wilcoxon signed-rank results are reported alongside corrected intervals. Reproducibility also requires explicit data contracts, versioned artifacts, untouched evaluation sets, and a clear separation between exploratory and confirmatory analyses. Reporting guidance such as TRIPOD and PROBAST further emphasizes outcome definition, validation, calibration, and risk of bias~\cite{collins2015tripod,wolff2019probast}.
+
+\section{Dataset and Data Integrity}
+\subsection{BRFSS 2015 Cohort and Target}
+The analyzed file is the Kaggle-derived BRFSS 2015 Heart Disease Health Indicators subset. It contains $253{,}680$ rows, 21 predictors, and the binary target \texttt{HeartDiseaseorAttack}. The target is a self-reported indicator of a history of coronary heart disease or myocardial infarction. It is not a prospective event label. The dataset fingerprint is SHA-256 \texttt{953fb23bb131736d7879539a071d3f6d1eaae8d4867ab05335d0ba89b94d5f99}. There are 229,787 negative rows ($90.58\%$) and 23,893 positive rows ($9.42\%$), with no missing values in the audited file.
+
+\begin{table}[t]
+\centering
+\caption{Predictor contract and semantic groups.}
+\label{tab:predictors}
+\scriptsize
+\begin{tabular}{p{0.25\columnwidth}p{0.68\columnwidth}}
+\toprule
+\textbf{Group} & \textbf{Variables and definitions}\\
+\midrule
+Clinical history & \texttt{HighBP}: high blood pressure; \texttt{HighChol}: high cholesterol; \texttt{CholCheck}: cholesterol check; \texttt{Stroke}: prior stroke; \texttt{Diabetes}: diabetes status; \texttt{DiffWalk}: difficulty walking or climbing stairs.\\
+Lifestyle & \texttt{BMI}: body mass index; \texttt{Smoker}: smoking history; \texttt{PhysActivity}: physical activity; \texttt{Fruits}: fruit consumption; \texttt{Veggies}: vegetable consumption; \texttt{HvyAlcoholConsump}: heavy alcohol consumption.\\
+Self-reported health & \texttt{GenHlth}: general health rating; \texttt{MentHlth}: mentally unhealthy days; \texttt{PhysHlth}: physically unhealthy days.\\
+Access and demographics & \texttt{AnyHealthcare}: healthcare coverage; \texttt{NoDocbcCost}: inability to see a doctor due to cost; \texttt{Sex}: sex code; \texttt{Age}: age bracket; \texttt{Education}: education bracket; \texttt{Income}: income bracket.\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Integrity, Duplicates, and Prevalence}
+The audit checks binary target values, duplicate column names, numeric encoding, missingness, duplicate rows, ranges, and the dataset hash. It identifies 23,899 duplicate rows. In a low-cardinality survey, identical predictor vectors can represent different respondents rather than clerical copies. The primary analysis therefore retains all rows for comparability, while a persisted deduplication sensitivity audit removes repeated rows and compares model rankings. Removing duplicates changes prevalence to $10.32\%$ and changes HistGradientBoosting PR-AUC from $0.3732$ to $0.3835$ in that sensitivity run; the ranking order remains unchanged.
+
+The current artifacts do not contain a duplicate-group-aware split in which every identical predictor vector is assigned to only one partition. Consequently, the primary split can contain repeated feature vectors across train, validation, and test. This is a material limitation and is not described as resolved by the row-level deduplication sensitivity run.
+
+\subsection{Partitioning and Leakage Boundary}
+For each seed, raw rows are stratified into 70\% training ($N=177{,}576$), 15\% validation ($N=38{,}052$), and 15\% test ($N=38{,}052$). The positive count in each test partition is 3,584 and natural prevalence is retained. Scaling, PBCC ranking, class-weight calculation, model fitting, threshold selection, and calibration fitting are bounded by the appropriate training or validation data. No test labels are used for model selection, threshold selection, or calibration. ADASYN is used only in training-side ablations.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{target_distribution}
+\caption{Audited natural class distribution of the BRFSS-derived cohort.}
+\label{fig:class_distribution}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{prevalence_reconciliation_plot}
+\caption{Arithmetic reconciliation of the published metric combination with natural and implied prevalence.}
+\label{fig:prevalence}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\fbox{\parbox{0.92\columnwidth}{\centering
+Raw CSV and integrity checks $\rightarrow$ stratified raw-row split\\[2pt]
+$\swarrow$ training: fit preprocessing, weights, models \hspace{8pt}
+$\searrow$ validation: select thresholds and calibrators\\[2pt]
+\hspace{20pt}frozen model and policy $\rightarrow$ untouched natural-prevalence test}}
+\caption{Leakage-aware analysis flow. Raw rows are split before learned operations; the test partition is used once for frozen evaluation.}
+\label{fig:flow}
+\end{figure}
+
+\section{Methodology}
+\subsection{Prevalence Audit of Published Metrics}
+Let $\pi$ denote positive prevalence, $r$ recall, and $p$ precision. If a reported triplet is internally consistent, the implied prevalence is
+\begin{equation}
+\pi = \frac{r\pi}{p} + (1-r)\pi + \frac{r\pi(1-p)}{p}.
+\end{equation}
+Equivalently, setting $TP=r\pi N$, $FN=(1-r)\pi N$, and $FP=TP(1-p)/p$, accuracy is
+\begin{equation}
+\mathrm{Acc}=1-\pi+\pi r-\frac{\pi r(1-p)}{p}.
+\end{equation}
+Substituting $p=0.96$, $r=0.878$, and the natural $\pi=0.0942$ yields approximately $98.5\%$ accuracy, not $91.7\%$. Solving for prevalence using the reported accuracy instead gives an implied prevalence near $52.3\%$. This establishes an arithmetic inconsistency and an implied evaluation prevalence; it does not prove whether the original authors used pre-split oversampling, a different test subset, rounding, or another procedure.
+
+\subsection{Feature-Group Gated Network}
+Let $\mathbf{x}_g\in\mathbb{R}^{d_g}$ be the variables in group $g$, with four groups defined in Table~\ref{tab:predictors}. Each group has an MLP encoder $E_g$ producing $\mathbf{z}_g=E_g(\mathbf{x}_g)\in\mathbb{R}^{16}$. FGGN concatenates the embeddings and computes
+\begin{equation}
+\mathbf{w}=\mathrm{softmax}(W_{\mathrm{gate}}[\mathbf{z}_1;\ldots;\mathbf{z}_4]+\mathbf{b}_{\mathrm{gate}}),
+\end{equation}
+where $\mathbf{w}$ lies on the four-dimensional probability simplex. The fused representation is
+\begin{equation}
+\mathbf{z}_{\mathrm{fused}}=\sum_{g=1}^{4}w_g\mathbf{z}_g,
+\qquad \hat{p}=\sigma(C(\mathbf{z}_{\mathrm{fused}})).
+\end{equation}
+The gate is a predictive routing device; its weights must not be interpreted as causal importance.
+
+\subsection{UniformGroupNet and InstanceGatedNet}
+UniformGroupNet uses the same group encoders but replaces learned weights with $\mathbf{z}_{\mathrm{fused}}=\frac{1}{4}\sum_g\mathbf{z}_g$. This isolates the incremental value of gating. InstanceGatedNet adds a nonlinear bottleneck before the softmax, allowing patient-specific routing. It is treated as an extension and its result is not used to rewrite the primary FGGN comparison.
+
+\subsection{Paper-Family and Tabular Baselines}
+EnsCVDD-Net is reimplemented as a sequential 1-D CNN--GRU model over the prescribed column order. This reproduces the stated structure, not necessarily every undocumented training detail of the original. BlCVDD-Net is represented in the existing ensemble artifacts where available. HistGradientBoosting is the principal non-neural baseline; logistic regression, random forests, Extra Trees, and a majority classifier provide additional reference points. The tree baseline is important because tabular empirical studies find that boosted trees often handle irregular interactions and irrelevant features better than generic neural networks~\cite{grinsztajn2022tree}.
+
+\subsection{Optimization, Loss, and Thresholds}
+Neural models use binary cross-entropy with class weighting computed from the training partition. The primary multi-seed neural comparison uses class weighting rather than global oversampling. ADASYN and no-resampling results are retained as ablations. The validation threshold is selected as
+\begin{equation}
+\tau^\star=\max\{\tau\in[0,1]:\mathrm{Recall}_{\mathrm{val}}(\tau)\geq0.80\}.
+\end{equation}
+The selected threshold is frozen before test evaluation. Thus, the 80\% constraint applies to validation recall; test recall is a separately measured outcome and may be below or above 80\%. The current persisted results do not include a complete 70/80/85/90/95\% threshold grid, so no such curve is claimed here.
+
+\subsection{Metrics and Statistical Analysis}
+We report PR-AUC (average precision), ROC-AUC, recall, precision, specificity, F1, balanced accuracy, accuracy, Brier score, confusion counts, fit time, and prevalence. Brier score is
+\begin{equation}
+\mathrm{BS}=\frac{1}{N}\sum_{i=1}^{N}(\hat{p}_i-y_i)^2.
+\end{equation}
+For five repeated holdouts, paired differences are summarized with standard intervals, bootstrap intervals, Wilcoxon signed-rank tests, and the Nadeau--Bengio corrected variance
+\begin{equation}
+\widehat{\mathrm{Var}}_{\mathrm{corr}}=
+\left(\frac{1}{K}+\frac{n_{\mathrm{test}}}{n_{\mathrm{train}}}\right)S^2.
+\end{equation}
+Here $K=5$, $n_{\mathrm{test}}=38{,}052$, and $n_{\mathrm{train}}=177{,}576$, giving a multiplier of approximately $0.414$. Because the five splits are not independent samples from all possible datasets, the resulting $p$-values are sensitivity analyses rather than definitive clinical evidence.
+
+\subsection{Calibration and Decision Curves}
+Platt scaling fits a logistic mapping from validation logits or scores; isotonic regression fits a monotonic validation mapping. Both are evaluated on untouched test predictions. The constant-prevalence Brier baseline is $\pi(1-\pi)=0.0853$. Decision curve net benefit is
+\begin{equation}
+\mathrm{NB}(p_t)=\frac{TP}{N}-\frac{FP}{N}\frac{p_t}{1-p_t},
+\end{equation}
+where $p_t$ is a decision threshold probability. It compares with $\mathrm{NB}_{\mathrm{none}}=0$ and $\mathrm{NB}_{\mathrm{all}}=\pi-(1-\pi)p_t/(1-p_t)$. This is a decision-theoretic quantity, not a claim that a survey probability is a validated clinical risk.
+
+\section{Experimental Evaluation}
+\subsection{Overall Model Comparison}
+Table~\ref{tab:main_results} reports the five-seed means and standard deviations at natural test prevalence. HistGradientBoosting has the best PR-AUC and ROC-AUC. UniformGroupNet and FGGN are close to it and exceed EnsCVDD-Net in PR-AUC. The small differences between the top three models should not be converted into a claim of a clinically meaningful improvement.
+
+\begin{table*}[t]
+\centering
+\caption{Five-seed performance on untouched natural-prevalence test partitions. Values are mean $\pm$ standard deviation.}
+\label{tab:main_results}
+\small
+\begin{tabular}{lcccccc}
+\toprule
+\textbf{Model} & \textbf{PR-AUC} & \textbf{ROC-AUC} & \textbf{Brier} & \textbf{Recall} & \textbf{Precision} & \textbf{Specificity}\\
+\midrule
+HistGradientBoosting & \textbf{0.3717$\pm$0.0067} & \textbf{0.8483$\pm$0.0026} & 0.1654$\pm$0.0016 & 0.7966$\pm$0.0081 & \textbf{0.2466$\pm$0.0042} & \textbf{0.7469$\pm$0.0068}\\
+UniformGroupNet & 0.3693$\pm$0.0070 & 0.8478$\pm$0.0026 & 0.1672$\pm$0.0035 & 0.7975$\pm$0.0099 & 0.2459$\pm$0.0046 & 0.7455$\pm$0.0084\\
+FGGN & 0.3689$\pm$0.0068 & 0.8478$\pm$0.0026 & 0.1659$\pm$0.0046 & 0.7978$\pm$0.0061 & 0.2464$\pm$0.0046 & 0.7461$\pm$0.0075\\
+Logistic regression & 0.3673$\pm$0.0063 & 0.8462$\pm$0.0029 & 0.1654$\pm$0.0015 & 0.7960$\pm$0.0095 & 0.2441$\pm$0.0047 & 0.7436$\pm$0.0081\\
+EnsCVDD-Net & 0.3563$\pm$0.0055 & 0.8442$\pm$0.0030 & 0.1671$\pm$0.0101 & 0.7982$\pm$0.0113 & 0.2408$\pm$0.0044 & 0.7382$\pm$0.0085\\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{multiseed_pr_auc_comparison}
+\caption{PR-AUC distribution across the five persisted seeds.}
+\label{fig:multiseed}
+\end{figure}
+
+\subsection{Multi-Seed Stability and Statistical Comparisons}
+The 951,300 persisted predictions were recomputed with zero discrepancy against the summary metrics. FGGN versus EnsCVDD-Net has mean paired PR-AUC difference $+0.012623$ and corrected $p=0.0011$, while FGGN versus UniformGroupNet has difference $-0.000411$ and corrected $p=0.448$. The latter is evidence against an observed gating advantage, not proof that all future samples or architectures are equivalent. The Wilcoxon result for FGGN versus EnsCVDD-Net is $p=0.0625$, illustrating sensitivity to the small number of paired seeds and why significance claims are reported with the test choice and correction.
+
+\subsection{Precision--Recall and ROC Analysis}
+PR-AUC is the primary ranking metric because the positive class is uncommon and precision changes with prevalence. Figure~\ref{fig:pr} summarizes the existing PR-AUC comparison; the gap between the majority baseline and the learned models is more informative than accuracy alone. ROC-AUC remains useful as a prevalence-insensitive ranking measure, but it can look strong while positive predictive value remains modest. The natural-prevalence precision values near $24$--$25\%$ at the recall-constrained operating point quantify the referral burden that an accuracy summary would hide.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{pr_auc_model_comparison}
+\caption{Persisted model comparison under natural prevalence.}
+\label{fig:pr}
+\end{figure}
+
+\subsection{Oversampling Strategy Comparison}
+The stored resampling comparison supports the methodological warning about ADASYN. The class-weighted FGGN ablation reaches PR-AUC $0.3654$, whereas the ADASYN neural run reaches $0.3268$ in the corresponding ablation. This is not a universal statement that ADASYN is harmful; it is an empirical result for this encoded survey representation and configuration. It supports retaining no-resampling and class-weighted controls.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{resampling_strategy_comparison}
+\caption{Persisted comparison of resampling and weighting strategies.}
+\label{fig:resampling}
+\end{figure}
+
+\subsection{Feature-Group Ablation and Gating}
+UniformGroupNet ($0.3693$ PR-AUC) and FGGN ($0.3689$) are nearly indistinguishable across seeds. The paired test does not support a gating improvement. The result indicates that the semantic grouping and separate encoders may account for most of the benefit relative to the sequential baseline, while the learned gate adds complexity without measurable ranking gain in this experiment.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{fggn_gate_weights}
+\caption{FGGN group gate allocations. These are predictive model weights, not causal effects.}
+\label{fig:gates}
+\end{figure}
+
+\subsection{Recall-Constrained Threshold Evaluation}
+The validation-selected threshold targets at least 80\% validation recall. On the untouched tests, mean recall ranges from $79.60\%$ to $79.82\%$ across the main models. This slight shortfall is expected under sampling variability and confirms why it is incorrect to describe the test result as a guaranteed 80\% constraint. The associated precision is approximately $24\%$--$25\%$ and specificity approximately $74\%$--$75\%. A full sensitivity curve at 70, 80, 85, 90, and 95\% recall requires a new threshold-grid export and is not inserted without evidence.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{recall_precision_tradeoff}
+\caption{Persisted recall--precision operating-point analysis.}
+\label{fig:threshold}
+\end{figure}
+
+\subsection{Calibration Comparison}
+Class weighting preserves ranking but shifts the score distribution, producing an uncalibrated mean test Brier score of $0.1654$ for HistGradientBoosting, worse than the constant-prevalence baseline $0.0853$. Validation-only Platt scaling reduces it to $0.0706 and isotonic regression to $0.0703. The isotonic calibration slope and intercept are approximately $0.963$ and $-0.058$, respectively. These improvements are measured on untouched test predictions, but calibration under temporal or demographic distribution shift remains unknown.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{reliability_diagrams}
+\caption{Validation-fitted calibration methods evaluated on test predictions.}
+\label{fig:calibration}
+\end{figure}
+
+\subsection{Hybrid Ensemble}
+An 80/20 probability blend of HistGradientBoosting and FGGN reaches PR-AUC $0.3728\pm0.0064$ and ROC-AUC $0.8489\pm0.0025$. The numerical gain suggests complementary errors, but the improvement is small. Because the blend weight and model selection are part of the experimental process, the result should be treated as an extension requiring further nested validation or external confirmation rather than as proof of superiority.
+
+\subsection{Subgroup Analysis}
+The subgroup artifacts evaluate age, sex, and income strata. Age prevalence is $1.38\%$ for young adults, $7.08\%$ for middle-aged adults, and $17.25\%$ for older adults; sex prevalence is $7.24\%$ for females and $12.18\%$ for males; income prevalence ranges from $5.97\%$ in the highest tier to $15.96\%$ in the lowest. Precision is consequently prevalence-sensitive: the same ranking and threshold can yield much lower positive predictive value in a low-prevalence group. These results are not a fairness certification, and the available analysis does not identify causal sources of subgroup differences.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{subgroup_metrics_comparison}
+\caption{Persisted subgroup metric comparison across age, sex, and income strata.}
+\label{fig:subgroups}
+\end{figure}
+
+\subsection{Explainability and Feature Attribution}
+FGGN gate allocation is highest for Clinical History and Self-Reported Health in the persisted artifact. Tree-based attribution highlights \texttt{GenHlth}, \texttt{Age}, \texttt{HighBP}, \texttt{Stroke}, \texttt{DiffWalk}, and \texttt{BMI}. PBCC, tree importance, permutation importance, and group allocation are correlated but not interchangeable explanations. They describe predictive association in cross-sectional survey data and cannot establish biological mechanism, causality, or individual treatment recommendations.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{feature_importance_ranking}
+\caption{Persisted feature-importance comparison across model and attribution methods.}
+\label{fig:importance}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{shap_summary_extra_trees_balanced}
+\caption{Persisted SHAP summary for the Extra Trees attribution analysis.}
+\label{fig:shap}
+\end{figure}
+
+\subsection{Decision Curve Analysis}
+The persisted decision curves compare model net benefit with screen-none and screen-all policies for threshold probabilities from 1\% to 35\%. HistGradientBoosting, FGGN, and UniformGroupNet are above both default policies over portions of the displayed range, and the stored analysis reports FGGN net benefit $0.0634$ versus EnsCVDD-Net $0.0581$ at $p_t=0.10$. This interpretation is conditional on the target, costs, and threshold probability; it does not mean that the survey output is a clinically validated 10-year risk.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\columnwidth]{decision_curve_analysis}
+\caption{Persisted decision-curve analysis with screen-none and screen-all references.}
+\label{fig:dca}
+\end{figure}
+
+\section{Discussion}
+HistGradientBoosting remains competitive because the predictors are low-cardinality, mixed-scale, and tabular, with nonlinear interactions and no meaningful spatial adjacency. This agrees with broad tabular benchmarks~\cite{grinsztajn2022tree,shwartz2022tabular}. Domain grouping helps neural models by replacing arbitrary adjacency with a modest prior over related variables and by giving each group its own encoder. The result does not show that the grouping is universally optimal; it shows that this specified grouping is a useful controlled alternative in this cohort.
+
+The neutral FGGN--UniformGroupNet result is substantively important. Learned gating does not automatically produce a predictive gain, and gate weights should not be presented as evidence that one domain is causally more important. The hybrid blend is slightly stronger than either component, suggesting complementary errors, but its small margin and selection process warrant conservative interpretation.
+
+Class weighting improves attention to the minority class while shifting probabilities away from the natural posterior. The calibration results show why discrimination and calibration must be reported separately. Natural-prevalence evaluation also explains the modest precision at a high-recall operating point: even a useful ranking model faces a low base rate. Subgroup prevalence differences can change precision without a corresponding change in ranking quality, so one global threshold can produce different referral burdens across populations.
+
+The paper-family arithmetic audit should be interpreted narrowly. The published metric combination is incompatible with the natural prevalence under a simple confusion-matrix calculation and implies a substantially more balanced evaluation distribution. It does not reveal the original authors' exact procedure or establish misconduct. Similarly, the Nadeau--Bengio correction makes the dependence assumption explicit but cannot compensate for having only five repeated holdouts.
+
+\section{Limitations and Future Work}
+The outcome is self-reported, cross-sectional, and limited to the 2015 BRFSS-derived file. It is not a future-event endpoint and does not include laboratory values, clinical examination, longitudinal follow-up, or external validation. The dataset is old relative to current populations, and survey coding and missingness mechanisms may change over time. Feature-group definitions are subjective. Five repeated holdouts provide useful stability evidence but are not a substitute for nested resampling or prospective validation. Duplicate feature vectors may cross partitions in the primary row-level split; duplicate-group-aware evaluation remains necessary. Calibration under distribution shift has not been established, and the decision curves depend on unvalidated costs and thresholds.
+
+Future work should include duplicate-group-aware splits, a preregistered recall-target threshold grid, external validation on newer survey years and clinical cohorts, temporal and geographic robustness, subgroup calibration and fairness analysis, sensitivity to alternative encodings, stronger tabular architectures, and prospective clinical workflow validation. Any claimed improvement should be measured on the same untouched test design and accompanied by absolute metrics, uncertainty, prevalence, and calibration.
 
 \section{Conclusion}
-Published high-accuracy, high-precision claims on CDC BRFSS 2015 reflect artificially balanced test splits. Under a leakage-safe protocol with natural $9.42\%$ prevalence, domain grouping resolves the inductive bias mismatch of 1D convolutions ($p = 0.0011$), while learned gating provides no ranking gain over uniform pooling. An 80/20 hybrid blend of HistGBT and FGGN achieves the highest overall screening performance ($0.3728$ PR-AUC).
+This study turns a high-accuracy paper-family claim into a reproducible natural-prevalence evaluation of self-reported heart-disease history classification. The results favor HistGradientBoosting for ranking, show that semantic grouping improves over the sequential CNN--GRU reimplementation, and provide no evidence that learned group gating improves over uniform pooling. Validation-only isotonic calibration materially improves probability quality, while subgroup and decision-curve analyses demonstrate that screening interpretation depends on prevalence and operating policy. The work is a methodological research prototype, not a clinical tool or a prospective cardiovascular risk model.
 
+\balance
 \bibliographystyle{IEEEtran}
 \bibliography{references}
 
 \end{document}
-

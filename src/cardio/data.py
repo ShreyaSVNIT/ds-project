@@ -6,7 +6,7 @@ from typing import Iterable
 
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import GroupShuffleSplit, train_test_split
 
 TARGET = "HeartDiseaseorAttack"
 EXPECTED_ROWS_APPROX = 253_680
@@ -100,6 +100,51 @@ def make_splits(
         y_train=y_train.reset_index(drop=True),
         y_valid=y_valid.reset_index(drop=True),
         y_test=y_test.reset_index(drop=True),
+        train_indices=train_idx,
+        valid_indices=valid_idx,
+        test_indices=test_idx,
+    )
+
+
+def make_group_splits(
+    X: pd.DataFrame,
+    y: pd.Series,
+    seed: int = 42,
+    test_size: float = 0.15,
+    valid_size: float = 0.15,
+) -> DataSplits:
+    """Split by exact predictor-vector groups so identical rows never cross partitions."""
+    if test_size <= 0 or valid_size <= 0 or test_size + valid_size >= 1:
+        raise ValueError("test_size and valid_size must be > 0 and sum to < 1.")
+    if len(X) != len(y):
+        raise ValueError("X and y must contain the same number of rows.")
+
+    group_codes = pd.MultiIndex.from_frame(X).factorize(sort=True)[0]
+    if len(np.unique(group_codes)) < 3:
+        raise ValueError("At least three unique predictor groups are required.")
+
+    first = GroupShuffleSplit(
+        n_splits=1, test_size=test_size + valid_size, random_state=seed
+    )
+    train_pos, temp_pos = next(first.split(X, y, groups=group_codes))
+    relative_test = test_size / (test_size + valid_size)
+    second = GroupShuffleSplit(
+        n_splits=1, test_size=1 - relative_test, random_state=seed
+    )
+    valid_rel, test_rel = next(
+        second.split(X.iloc[temp_pos], y.iloc[temp_pos], groups=group_codes[temp_pos])
+    )
+    train_idx = np.asarray(X.index[train_pos], dtype=int)
+    valid_idx = np.asarray(X.index[temp_pos[valid_rel]], dtype=int)
+    test_idx = np.asarray(X.index[temp_pos[test_rel]], dtype=int)
+
+    return DataSplits(
+        X_train=X.iloc[train_pos].reset_index(drop=True),
+        X_valid=X.iloc[temp_pos[valid_rel]].reset_index(drop=True),
+        X_test=X.iloc[temp_pos[test_rel]].reset_index(drop=True),
+        y_train=y.iloc[train_pos].reset_index(drop=True),
+        y_valid=y.iloc[temp_pos[valid_rel]].reset_index(drop=True),
+        y_test=y.iloc[temp_pos[test_rel]].reset_index(drop=True),
         train_indices=train_idx,
         valid_indices=valid_idx,
         test_indices=test_idx,

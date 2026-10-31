@@ -50,3 +50,10 @@ Update this file after each milestone. Do not mark a task complete without a com
 - **Statistical Interpretation:** Applied Nadeau & Bengio (2003) corrected resampled variance ($\hat{\sigma}^2_{\text{corr}} = (1/K + n_{\text{test}}/n_{\text{train}})\hat{S}^2$) to account for overlapping training data across repeated holdout splits.
 - **Subgroup Analysis Framing:** Performance disparities across demographic subgroups are documented as prevalence-driven screening dynamics, explicitly noting that these analyses do not constitute proof of algorithmic fairness.
 
+## Paper expansion status
+- [x] Expanded `report/latex/main.tex` with the seven requested literature subsections, research-gap table, dataset contract, architecture formulations, leakage-safe protocol, measured evaluation subsections, discussion, limitations, and future work.
+- [x] Added 15 bibliography entries covering cardiovascular prediction, tabular neural architectures, oversampling, calibration, statistical testing, and reporting guidance.
+- [x] Added persisted reliability, subgroup, target-distribution, and SHAP figures to `report/latex/figures/`; retained the existing comparison, prevalence, resampling, gating, threshold, and decision-curve figures in the paper.
+- [x] Corrected the prevalence audit language to distinguish an arithmetic implication from proof of the original split or resampling procedure.
+- [ ] Full LaTeX compilation remains pending because no `pdflatex`, `bibtex`, `latexmk`, or `tectonic` executable is available in the current environment.
+- [ ] Duplicate-group-aware splitting and a 70/80/85/90/95 percent recall threshold grid require additional experiment exports and are not claimed in the paper.

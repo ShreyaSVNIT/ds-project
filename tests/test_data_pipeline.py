@@ -13,6 +13,7 @@ from cardio.data import (
     DataSplits,
     load_dataset,
     load_split_indices,
+    make_group_splits,
     make_splits,
     pbcc_scores,
     save_split_indices,
@@ -108,3 +109,22 @@ def test_threshold_recall_constraint():
     assert "pr_auc_average_precision" in metrics
     assert "brier_score" in metrics
     assert "specificity" in metrics
+
+
+def test_duplicate_group_splits_keep_identical_predictors_together():
+    X = pd.DataFrame(
+        {
+            "a": [0, 0, 0, 1, 1, 2, 2, 3, 4, 5],
+            "b": [0, 0, 0, 1, 1, 2, 2, 3, 4, 5],
+        }
+    )
+    y = pd.Series([0, 0, 0, 0, 1, 0, 1, 1, 0, 1])
+    splits = make_group_splits(X, y, seed=7, test_size=0.2, valid_size=0.2)
+    partitions = [
+        set(map(tuple, splits.X_train.to_numpy())),
+        set(map(tuple, splits.X_valid.to_numpy())),
+        set(map(tuple, splits.X_test.to_numpy())),
+    ]
+    assert not (partitions[0] & partitions[1])
+    assert not (partitions[0] & partitions[2])
+    assert not (partitions[1] & partitions[2])
