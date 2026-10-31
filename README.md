@@ -60,6 +60,14 @@ The held-out validation and test data always keep the original class distributio
 
 The **proposed extension** has two parts: (1) a Feature-Group Gated Network (FGGN) that separately encodes clinical history, lifestyle, self-reported health, and access/demographic variables, then learns softmax gate weights for the group embeddings; and (2) leakage-aware, recall-constrained threshold selection. The tabular blender learns out-of-fold base-model predictions for its meta-learner. This changes the operating point; it is not a promise of higher accuracy. The score at threshold 0.50 is still reported as a separate comparison.
 
+To validate the installation without downloading the research dataset or running the full pipeline, use the synthetic smoke check:
+
+```bash
+make smoke
+```
+
+The generated `synthetic_smoke.csv` and `artifacts/smoke/` outputs are ignored by Git and must not be used as research evidence.
+
 ### Why the evaluation itself is a research gap
 The source dataset has 23,893 positive cases out of 253,680 (about 9.4%), so a majority-only predictor is already about 90.6% accurate on the original distribution. In Table 14 of the reference paper (PDF page 20), BlCVDD-Net is reported at about 91.7% accuracy, 96.0% precision and 87.8% recall; the base GRU's metrics are all near 90.5%. These metrics look consistent with a near-balanced evaluation set rather than the natural target prevalence. The article does not make the order of ADASYN versus cross-validation splits sufficiently transparent to rule out every concern. This does **not** prove leakage, but it is a strong reason for us to keep the test split untouched and record its prevalence.
 

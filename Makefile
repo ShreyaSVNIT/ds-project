@@ -4,7 +4,7 @@
 PYTHON := python3
 DATA := data/raw/heart_disease_health_indicators_BRFSS2015.csv
 
-.PHONY: help all audit tabular neural ablations robustness calibration subgroups figures test clean
+.PHONY: help all audit tabular neural ablations robustness calibration subgroups figures smoke test clean
 
 help:
 	@echo "Available commands:"
@@ -18,6 +18,7 @@ help:
 	@echo "  make dca           - Run clinical Decision Curve Analysis"
 	@echo "  make shap          - Run SHAP feature attribution and agreement suite"
 	@echo "  make blend         - Run HistGBT + FGGN multi-seed probability blend"
+	@echo "  make smoke         - Run a fast synthetic tabular pipeline check"
 	@echo "  make test          - Run full pytest unit test suite"
 	@echo "  make all           - Execute complete end-to-end research pipeline"
 
@@ -53,9 +54,13 @@ shap:
 blend:
 	$(PYTHON) scripts/evaluate_multiseed_blend.py
 
+smoke:
+	$(PYTHON) scripts/generate_synthetic_smoke.py --out data/raw/synthetic_smoke.csv
+	$(PYTHON) scripts/run_tabular_experiments.py --data data/raw/synthetic_smoke.csv --out artifacts/smoke --resampling none --top-k 21 --quick
+	$(PYTHON) -c "from pathlib import Path; p = Path('artifacts/smoke/results.csv'); assert p.is_file() and p.stat().st_size > 0, f'Missing smoke output: {p}'"
+
 test:
 	pytest -v tests/
 
 all: audit tabular neural ablations robustness calibration subgroups dca shap blend test
 	@echo "All research milestones executed cleanly and verified."
-
